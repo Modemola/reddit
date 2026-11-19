@@ -25,6 +25,17 @@ const LEVELS = [
       { at: [0, 2], dir: 'R', on: 2, off: 2, phase: 0 },
       { at: [6, 4], dir: 'L', on: 2, off: 2, phase: 1 },
       { at: [0, 6], dir: 'R', on: 2, off: 1, phase: 0 }] },
+  { name: 'Loose Change', map: [
+    '#######',
+    '###G###',
+    '###.###',
+    '#.....#',
+    '###.###',
+    '###.###',
+    '###.###',
+    '###.###',
+    '###S###'],
+    guards: [{ path: [[3, 3]], face: 'D', see: 1 }] },
   { name: 'Night Shift', map: [
     '#######',
     '#G....#',

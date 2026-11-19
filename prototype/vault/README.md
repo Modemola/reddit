@@ -23,3 +23,8 @@ This is a throwaway prototype for testing whether cracking is fun. It runs as a 
 - **Vaults built today:** everyone else's vaults, deadliest first. Your own vault card shows how many thieves it caught and how many cracked it.
 
 Player vaults are untrusted data. The page validates each one's shape before showing it and re-solves it locally instead of trusting stored numbers.
+
+## Pebble, guard voices and music
+- **Pebble:** you carry one. Tap Pebble, then a ringed tile up to 4 tiles away in a straight line. Every guard within 3 tiles turns to face the noise for two turns, then goes back to its route. The solver uses it too, so "best possible" and the builder's checker account for it. Vault 3, Loose Change, can't be cracked without it.
+- **Guard voices:** guards say "Who's there?" when they hear a pebble, "Must've been rats." when they give up, "THIEF!" when they catch you, and "Oof—" when you knock them out.
+- **Music:** `src/music.js` is the adaptive score from Hooja: Heist Night (same author), ported to plain JS. A title tune on the job sheet; in a vault it goes tense when danger is next to you or a guard is on edge, with stings for cracked and caught. It starts on the first tap, and the Sound button mutes it.
