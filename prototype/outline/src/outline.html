@@ -1,0 +1,397 @@
+<title>Outline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Inter:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow column like a chart table; the canvas is the table, everything else is quiet margin text. */
+:root {
+  --ink: #0d1320;        /* the table at night */
+  --sheet: #141c2c;      /* the chart sheet */
+  --rule: #26314a;       /* graticule and hairlines */
+  --chalk: #e8edf6;      /* text */
+  --muted: #8794ab;      /* secondary text */
+  --you: #ffb347;        /* your line */
+  --truth: #74e0c0;      /* the real coastline */
+  --crowd: #7c9dff;      /* everyone else */
+  --display: "Bricolage Grotesque", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, -apple-system, sans-serif;
+  --mono: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--ink); color: var(--chalk); font-family: var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 20px;
+  -webkit-tap-highlight-color: transparent;
+}
+.app { max-width: 540px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.mark { font-family: var(--display); font-weight: 800; font-size: 1.25rem; letter-spacing: 0.14em; }
+.mark span { color: var(--you); }
+.edition { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); letter-spacing: 0.04em; text-align: right; }
+
+.prompt { display: flex; flex-direction: column; gap: 2px; min-height: 5.6rem; justify-content: flex-end; }
+.kind { font-family: var(--mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+.name { font-family: var(--display); font-weight: 800; font-size: clamp(2.4rem, 11vw, 3.6rem); line-height: 0.95; text-wrap: balance; }
+.hint { color: var(--muted); font-size: 0.95rem; line-height: 1.45; min-height: 1.4em; }
+
+.table { position: relative; border-radius: 14px; overflow: hidden; background: var(--sheet); box-shadow: 0 0 0 1px var(--rule), 0 18px 40px -20px #000; aspect-ratio: 1; max-width: 100%; }
+canvas#board { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.legend { position: absolute; left: 12px; bottom: 10px; display: flex; gap: 12px; font-family: var(--mono); font-size: 0.7rem; color: var(--muted); pointer-events: none; }
+.legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.timer { position: absolute; right: 12px; top: 10px; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.score { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; align-items: end; }
+.big { font-family: var(--display); font-weight: 800; font-size: 3.4rem; line-height: 0.9; color: var(--you); font-variant-numeric: tabular-nums; }
+.big small { font-size: 1.3rem; }
+.verdict { font-family: var(--display); font-weight: 500; font-size: 1.3rem; }
+.sub { grid-column: 1 / -1; color: var(--muted); font-size: 0.92rem; line-height: 1.5; }
+.sub b { color: var(--chalk); font-weight: 600; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat { border-top: 1px solid var(--rule); padding-top: 8px; min-width: 0; }
+.stat .v { font-family: var(--mono); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.stat .l { font-size: 0.75rem; color: var(--muted); }
+
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+button { font: 600 1rem var(--body); border-radius: 999px; padding: 13px 20px; border: 0; cursor: pointer; transition: transform .12s ease, background .2s; }
+button:active { transform: scale(0.97); }
+button:focus-visible { outline: 2px solid var(--you); outline-offset: 3px; }
+.primary { background: var(--you); color: #1b1206; flex: 1 1 auto; }
+.ghost { background: transparent; color: var(--chalk); box-shadow: inset 0 0 0 1.5px var(--rule); }
+.note { font-size: 0.8rem; color: var(--muted); line-height: 1.45; }
+.toast { font-family: var(--mono); font-size: 0.8rem; color: var(--truth); min-height: 1.2em; }
+@media (prefers-reduced-motion: reduce) { button { transition: none; } }
+</style>
+
+<div class="app">
+  <header>
+    <div class="mark">OUT<span>L</span>INE</div>
+    <div class="edition" id="edition"></div>
+  </header>
+
+  <section class="prompt">
+    <div class="kind" id="kind"></div>
+    <div class="name" id="name"></div>
+    <div class="hint" id="hint"></div>
+  </section>
+
+  <div class="table">
+    <canvas id="board" aria-label="Drawing table"></canvas>
+    <div class="legend" id="legend" hidden>
+      <span><i style="background:var(--you)"></i>you</span>
+      <span><i style="background:var(--truth)"></i>real</span>
+      <span id="lg-crowd" hidden><i style="background:var(--crowd)"></i>everyone</span>
+    </div>
+    <div class="timer" id="timer" hidden></div>
+  </div>
+
+  <section class="score" id="score" hidden>
+    <div class="big" id="pct">0<small>%</small></div>
+    <div class="verdict" id="verdict"></div>
+    <div class="sub" id="crowdline"></div>
+  </section>
+  <section class="stats" id="stats" hidden>
+    <div class="stat"><div class="v" id="st-n">–</div><div class="l">drawings</div></div>
+    <div class="stat"><div class="v" id="st-rank">–</div><div class="l">you beat</div></div>
+    <div class="stat"><div class="v" id="st-crowd">–</div><div class="l">crowd's shape</div></div>
+  </section>
+
+  <div class="actions" id="actions"></div>
+  <div class="toast" id="toast" role="status"></div>
+  <p class="note" id="foot">Drawings are shared with everyone who opens this page. Shapes from Natural Earth.</p>
+</div>
+
+<script>
+const SHAPES = /*SHAPES*/[];
+const ORDER = ["italy","australia","great-britain","india","lake-michigan","spain","madagascar","france","mexico","iceland","brazil","turkey","ireland","egypt","vietnam","germany","cuba","south-africa","thailand","lake-superior","sri-lanka","ukraine","portugal","china","poland","argentina","saudi-arabia","lake-victoria","mongolia","kenya","nigeria","lake-baikal"];
+const byId = Object.fromEntries(SHAPES.map(s => { const p = []; for (let i = 0; i < s.pts.length; i += 2) p.push([s.pts[i], s.pts[i + 1]]); return [s.id, { ...s, poly: p }]; }));
+const EPOCH = Date.UTC(2026, 10, 19);
+const dayNo = Math.max(0, Math.floor((Date.now() - EPOCH) / 864e5));
+const todayId = ORDER[dayNo % ORDER.length];
+const PEEK_PENALTY = 0.85, DRAW_SECONDS = 25;
+
+// ---------- geometry ----------
+const VIEW = { x0: -70, span: 1140 };          // world window shown on the table
+const R = { x0: -250, span: 1500, n: 150 };    // raster used for scoring
+const area = p => { let a = 0; for (let i = 0; i < p.length; i++) { const [x1, y1] = p[i], [x2, y2] = p[(i + 1) % p.length]; a += x1 * y2 - x2 * y1; } return Math.abs(a / 2); };
+const centroid = p => { let x = 0, y = 0; for (const q of p) { x += q[0]; y += q[1]; } return [x / p.length, y / p.length]; };
+function rdp(pts, eps) {
+  if (pts.length < 3) return pts;
+  const [ax, ay] = pts[0], [bx, by] = pts[pts.length - 1], dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1;
+  let m = 0, k = 0;
+  for (let i = 1; i < pts.length - 1; i++) { const d = Math.abs(dy * pts[i][0] - dx * pts[i][1] + bx * ay - by * ax) / L; if (d > m) { m = d; k = i; } }
+  return m <= eps ? [pts[0], pts[pts.length - 1]] : rdp(pts.slice(0, k + 1), eps).slice(0, -1).concat(rdp(pts.slice(k), eps));
+}
+const rc = document.createElement('canvas'); rc.width = rc.height = R.n;
+const rctx = rc.getContext('2d', { willReadFrequently: true });
+function mask(poly) {
+  rctx.clearRect(0, 0, R.n, R.n); rctx.beginPath();
+  poly.forEach(([x, y], i) => { const px = (x - R.x0) / R.span * R.n, py = (y - R.x0) / R.span * R.n; i ? rctx.lineTo(px, py) : rctx.moveTo(px, py); });
+  rctx.closePath(); rctx.fillStyle = '#fff'; rctx.fill('evenodd');
+  const d = rctx.getImageData(0, 0, R.n, R.n).data, m = new Uint8Array(R.n * R.n);
+  for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3] > 127 ? 1 : 0;
+  return m;
+}
+function iou(a, b) { let i = 0, u = 0; for (let k = 0; k < a.length; k++) { i += a[k] & b[k]; u += a[k] | b[k]; } return u ? i / u : 0; }
+const apply = (poly, c, t) => poly.map(([x, y]) => [(x - c[0]) * t.s + t.cx + t.dx, (y - c[1]) * t.s + t.cy + t.dy]);
+
+// Fair alignment: size and position don't matter, only the shape.
+function align(raw, truth) {
+  const tm = mask(truth.poly), tc = centroid(truth.poly), uc = centroid(raw);
+  const t = { s: Math.sqrt(area(truth.poly) / Math.max(area(raw), 1)), cx: tc[0], cy: tc[1], dx: 0, dy: 0 };
+  const f = t => iou(tm, mask(apply(raw, uc, t)));
+  let best = f(t), step = { s: 0.1, dx: 50, dy: 50 };
+  for (let round = 0; round < 5; round++) {
+    let improved = true;
+    while (improved) {
+      improved = false;
+      for (const k of ['s', 'dx', 'dy']) for (const dir of [1, -1]) {
+        const c = { ...t, [k]: t[k] + dir * (k === 's' ? t.s * step.s : step[k]) };
+        const v = f(c); if (v > best + 1e-4) { best = v; Object.assign(t, c); improved = true; }
+      }
+    }
+    step = { s: step.s / 2, dx: step.dx / 2, dy: step.dy / 2 };
+  }
+  return { t, uc, iou: best, aligned: apply(raw, uc, t) };
+}
+
+// ---------- canvas ----------
+const cv = document.getElementById('board'), ctx = cv.getContext('2d');
+let W = 0, DPR = 1;
+function resize() { DPR = Math.min(window.devicePixelRatio || 1, 2.5); W = cv.clientWidth; cv.width = cv.height = Math.round(W * DPR); draw(); }
+const toPx = v => (v - VIEW.x0) / VIEW.span * W;
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+const C = { you: css('--you'), truth: css('--truth'), crowd: css('--crowd'), rule: css('--rule'), muted: css('--muted') };
+function path(poly, close = true) { ctx.beginPath(); poly.forEach(([x, y], i) => i ? ctx.lineTo(toPx(x), toPx(y)) : ctx.moveTo(toPx(x), toPx(y))); if (close) ctx.closePath(); }
+function grid() {
+  ctx.strokeStyle = C.rule; ctx.lineWidth = 1;
+  for (let g = 0; g <= 1000; g += 125) {
+    ctx.globalAlpha = g % 500 === 0 ? 0.9 : 0.45;
+    ctx.beginPath(); ctx.moveTo(toPx(g), 0); ctx.lineTo(toPx(g), W); ctx.moveTo(0, toPx(g)); ctx.lineTo(W, toPx(g)); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- state ----------
+const S = { phase: 'intro', shape: null, raw: [], peeked: false, result: null, crowd: [], consensus: null, anim: 0, peekAlpha: 0, deadline: 0 };
+const $ = id => document.getElementById(id);
+
+function draw() {
+  if (!W) return;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, W); grid();
+  ctx.lineJoin = ctx.lineCap = 'round';
+  const sh = S.shape;
+  if (S.peekAlpha > 0) { ctx.globalAlpha = S.peekAlpha; path(sh.poly); ctx.fillStyle = C.truth + '33'; ctx.fill(); ctx.strokeStyle = C.truth; ctx.lineWidth = 2.5; ctx.stroke(); ctx.globalAlpha = 1; }
+  if (S.phase === 'draw' || S.phase === 'check') {
+    if (S.raw.length > 1) { path(S.raw, S.phase === 'check'); ctx.strokeStyle = C.you; ctx.lineWidth = 5; ctx.stroke(); }
+    return;
+  }
+  if (S.phase === 'reveal' && S.result) {
+    const a = S.anim; // 0..3 timeline
+    // crowd layer
+    const ca = Math.max(0, Math.min(1, a - 2));
+    if (ca > 0 && S.crowd.length) {
+      if (S.consensus) { ctx.globalAlpha = ca * 0.35; ctx.imageSmoothingEnabled = true; ctx.filter = 'blur(' + Math.round(W / 90) + 'px)'; ctx.drawImage(S.consensus, toPx(R.x0), toPx(R.x0), toPx(R.x0 + R.span) - toPx(R.x0), toPx(R.x0 + R.span) - toPx(R.x0)); ctx.filter = 'none'; }
+      ctx.globalCompositeOperation = 'lighter';
+      const al = Math.min(0.5, 1.6 / Math.sqrt(S.crowd.length));
+      ctx.globalAlpha = ca * al; ctx.strokeStyle = C.crowd; ctx.lineWidth = 1.6;
+      for (const c of S.crowd) { path(c); ctx.stroke(); }
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    }
+    // the real shape draws itself in
+    const ta = Math.max(0, Math.min(1, a - 0.8));
+    if (ta > 0) {
+      ctx.globalAlpha = ta; path(sh.poly); ctx.fillStyle = C.truth + '1f'; ctx.fill(); ctx.globalAlpha = 1;
+      const n = Math.max(2, Math.floor(sh.poly.length * ta)); path(sh.poly.slice(0, n).concat(ta >= 1 ? [sh.poly[0]] : []), false);
+      ctx.strokeStyle = C.truth; ctx.lineWidth = 2.5; ctx.stroke();
+    }
+    // your line glides onto it
+    const k = ease(Math.min(1, a / 0.8)), r = S.result;
+    const src = r.raw, dst = r.aligned;
+    const cur = src.map((p, i) => [p[0] + (dst[i][0] - p[0]) * k, p[1] + (dst[i][1] - p[1]) * k]);
+    path(cur); ctx.strokeStyle = C.you; ctx.lineWidth = 4.5; ctx.stroke();
+  }
+}
+const ease = t => 1 - Math.pow(1 - t, 3);
+
+// ---------- drawing input ----------
+let drawing = false;
+const toWorld = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * VIEW.span + VIEW.x0, (e.clientY - r.top) / r.height * VIEW.span + VIEW.x0]; };
+cv.addEventListener('pointerdown', e => {
+  if (S.phase !== 'draw') return;
+  cv.setPointerCapture(e.pointerId); drawing = true; S.raw = [toWorld(e)];
+  if (!S.deadline) startTimer();
+  draw();
+});
+cv.addEventListener('pointermove', e => {
+  if (!drawing) return;
+  const p = toWorld(e), q = S.raw[S.raw.length - 1];
+  if (Math.hypot(p[0] - q[0], p[1] - q[1]) > 3) { S.raw.push(p); draw(); }
+});
+const endStroke = () => {
+  if (!drawing) return; drawing = false;
+  const xs = S.raw.map(p => p[0]), ys = S.raw.map(p => p[1]);
+  const big = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  if (S.raw.length < 12 || big < 120) { S.raw = []; hint('Too small to read. Draw the whole outline in one go, as big as the table.'); draw(); return; }
+  stopTimer(); S.phase = 'check'; render();
+};
+cv.addEventListener('pointerup', endStroke); cv.addEventListener('pointercancel', endStroke);
+
+let timerId = 0;
+function startTimer() {
+  S.deadline = Date.now() + DRAW_SECONDS * 1000; $('timer').hidden = false;
+  timerId = setInterval(() => {
+    const left = Math.max(0, Math.ceil((S.deadline - Date.now()) / 1000)); $('timer').textContent = left + 's';
+    if (left <= 0) { if (drawing) endStroke(); else if (S.phase === 'draw') { stopTimer(); hint('Time is up. Give it another go.'); S.deadline = 0; } }
+  }, 200);
+}
+function stopTimer() { clearInterval(timerId); $('timer').hidden = true; }
+
+// ---------- crowd store ----------
+let db = null, me = null, myDoc = null, players = [], crowdStatus = 'loading';
+async function connect() {
+  try {
+    if (!window.claude?.use) { crowdStatus = 'off'; return; }
+    const [d, u] = await Promise.all([claude.use('db'), claude.use('user')]);
+    if (!d || !u) { crowdStatus = 'off'; render(); return; }
+    db = d; me = await u.id();
+    const timeout = setTimeout(() => { if (crowdStatus === 'loading') { crowdStatus = 'slow'; render(); } }, 10000);
+    db.collection('players').onSnapshot(snap => {
+      players = snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() }));
+      myDoc = players.find(p => p.id === me) || null;
+      if (!snap.metadata.fromCache) { clearTimeout(timeout); crowdStatus = 'live'; }
+      onCrowd();
+    }, () => { clearTimeout(timeout); crowdStatus = 'off'; render(); });
+  } catch { crowdStatus = 'off'; render(); }
+}
+const unpack = a => { const p = []; for (let i = 0; i + 1 < a.length; i += 2) p.push([a[i], a[i + 1]]); return p; };
+function savedRound(id) {
+  const r = myDoc?.rounds?.[id];
+  if (r) return r;
+  try { return JSON.parse(localStorage.getItem('outline:' + id) || 'null'); } catch { return null; }
+}
+async function saveRound(id, rec) {
+  try { localStorage.setItem('outline:' + id, JSON.stringify(rec)); } catch {}
+  if (!db || !me) return false;
+  try {
+    const rounds = { ...(myDoc?.rounds || {}), [id]: rec };
+    await db.collection('players').doc(me).set({ rounds });
+    return true;
+  } catch { return false; }
+}
+function onCrowd() {
+  if (S.phase === 'intro' && S.shape && savedRound(S.shape.id)) { showSaved(); return; }
+  if (S.phase === 'reveal') { buildCrowd(); render(); draw(); }
+}
+function buildCrowd() {
+  const id = S.shape.id;
+  const others = players.filter(p => p.id !== me && p.rounds?.[id]).map(p => p.rounds[id]);
+  S.crowd = others.map(r => unpack(r.p)); if (S.result) S.crowd.push(S.result.aligned);
+  S.scores = others.map(r => r.s);
+  S.consensus = null; S.crowdIou = null;
+  if (S.crowd.length >= 3) {
+    const acc = new Uint16Array(R.n * R.n);
+    for (const c of S.crowd) { const m = mask(c); for (let i = 0; i < m.length; i++) acc[i] += m[i]; }
+    const half = S.crowd.length / 2, cm = new Uint8Array(acc.length);
+    const img = new ImageData(R.n, R.n), rgb = [124, 157, 255];
+    for (let i = 0; i < acc.length; i++) { cm[i] = acc[i] >= half ? 1 : 0; const v = acc[i] / S.crowd.length; img.data[i * 4] = rgb[0]; img.data[i * 4 + 1] = rgb[1]; img.data[i * 4 + 2] = rgb[2]; img.data[i * 4 + 3] = cm[i] ? 150 + 105 * v : 0; }
+    const c = document.createElement('canvas'); c.width = c.height = R.n; c.getContext('2d').putImageData(img, 0, 0);
+    S.consensus = c; S.crowdIou = iou(cm, mask(S.shape.poly));
+  }
+}
+
+// ---------- flow ----------
+function hint(t) { $('hint').textContent = t; }
+function setShape(id) {
+  S.shape = byId[id]; S.raw = []; S.result = null; S.peeked = false; S.deadline = 0; S.peekAlpha = 0; S.anim = 0;
+  $('kind').textContent = (id === todayId ? 'Today · ' : 'Practice · ') + S.shape.kind;
+  $('name').textContent = S.shape.name;
+  if (savedRound(id)) showSaved(); else { S.phase = 'intro'; render(); draw(); }
+}
+function begin(peek) {
+  S.phase = 'draw'; S.raw = []; S.deadline = 0; render();
+  if (peek) {
+    S.peeked = true; const t0 = performance.now();
+    const f = now => { const e = (now - t0) / 1600; S.peekAlpha = e < 0.7 ? 1 : Math.max(0, 1 - (e - 0.7) / 0.3); draw(); if (e < 1) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  } else draw();
+}
+async function lockIn() {
+  const r = align(S.raw, S.shape);
+  const score = Math.round(r.iou * 100 * (S.peeked ? PEEK_PENALTY : 1));
+  const stored = rdp(r.aligned.concat([r.aligned[0]]), 2.5).slice(0, -1).map(p => [Math.round(p[0]), Math.round(p[1])]);
+  S.result = { raw: S.raw, aligned: r.aligned, score, peeked: S.peeked };
+  const rec = { p: stored.flat(), s: score, k: S.peeked, t: Date.now() };
+  S.phase = 'reveal'; buildCrowd(); render(); play();
+  const ok = await saveRound(S.shape.id, rec);
+  if (!ok && crowdStatus !== 'off') toast('Your drawing could not be added to the crowd. Check your connection and reopen the page.');
+}
+function showSaved() {
+  const rec = savedRound(S.shape.id); const pts = unpack(rec.p);
+  S.result = { raw: pts, aligned: pts, score: rec.s, peeked: rec.k };
+  S.phase = 'reveal'; buildCrowd(); S.anim = 3; render(); draw();
+}
+function play() {
+  const t0 = performance.now(), reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const f = now => { S.anim = reduce ? 3 : Math.min(3, (now - t0) / 1000 * 1.25); draw(); renderScore(); if (S.anim < 3) requestAnimationFrame(f); };
+  requestAnimationFrame(f);
+}
+function verdict(s) { return s >= 82 ? 'Cartographer' : s >= 70 ? 'Navigator' : s >= 55 ? 'Pathfinder' : s >= 40 ? 'Wanderer' : 'Lost at sea'; }
+function renderScore() {
+  const r = S.result; if (!r) return;
+  const shown = Math.round(r.score * ease(Math.min(1, Math.max(0, (S.anim - 0.8) / 1.2))));
+  $('pct').innerHTML = shown + '<small>%</small>';
+  $('verdict').textContent = S.anim >= 2 ? verdict(r.score) + (r.peeked ? ' · peeked' : '') : '';
+}
+function render() {
+  const p = S.phase;
+  $('edition').textContent = 'No. ' + (dayNo + 1) + ' · ' + new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  $('legend').hidden = p !== 'reveal'; $('lg-crowd').hidden = !(p === 'reveal' && S.crowd.length > 1);
+  $('score').hidden = $('stats').hidden = p !== 'reveal';
+  const A = $('actions'); A.innerHTML = '';
+  const btn = (label, cls, fn) => { const b = document.createElement('button'); b.textContent = label; b.className = cls; b.onclick = fn; A.appendChild(b); };
+  if (p === 'intro') {
+    hint(`Draw ${S.shape.name} from memory in one line. Lift your finger to finish. You have ${DRAW_SECONDS} seconds once you start.`);
+    btn('Start drawing', 'primary', () => begin(false));
+    btn('Peek first', 'ghost', () => begin(true));
+  } else if (p === 'draw') {
+    hint(S.peeked ? 'Draw it while it is fresh.' : 'Start anywhere on the coast and go all the way round.');
+  } else if (p === 'check') {
+    hint('Happy with it? Size and position do not matter, only the shape.');
+    btn('Lock it in', 'primary', lockIn);
+    btn('Redraw', 'ghost', () => begin(false));
+  } else if (p === 'reveal') {
+    hint('');
+    renderScore();
+    const n = S.crowd.length;
+    $('st-n').textContent = n || 1;
+    const sc = S.scores || [];
+    $('st-rank').textContent = sc.length ? Math.round(100 * sc.filter(x => x < S.result.score).length / sc.length) + '%' : '–';
+    $('st-crowd').textContent = S.crowdIou != null ? Math.round(S.crowdIou * 100) + '%' : '–';
+    let line;
+    if (crowdStatus === 'off') line = 'Crowd drawings are not available in this view. Open the page signed in to see everyone else.';
+    else if (crowdStatus === 'loading' || crowdStatus === 'slow') line = crowdStatus === 'slow' ? 'The crowd is taking a while to load. It will appear here when it arrives.' : 'Loading everyone else’s drawings…';
+    else if (n < 3) line = `<b>${n <= 1 ? 'You are the first' : 'Only 2 drawings so far'}</b>. Once 3 people have drawn ${S.shape.name}, the crowd’s combined shape appears here.`;
+    else line = S.crowdIou * 100 > S.result.score ? `Combined, <b>${n} people drew a better ${S.shape.name}</b> (${Math.round(S.crowdIou * 100)}%) than you did.` : `<b>You beat the crowd.</b> Your ${S.shape.name} is closer than the shape ${n} people drew together.`;
+    $('crowdline').innerHTML = line;
+    btn('Copy result', 'primary', copyResult);
+    const next = ORDER.find(id => id !== S.shape.id && !savedRound(id));
+    if (next) btn('Practice another', 'ghost', () => setShape(next));
+    if (S.shape.id !== todayId) btn("Today's shape", 'ghost', () => setShape(todayId));
+  }
+}
+function toast(t) { $('toast').textContent = t; clearTimeout(toast.t); toast.t = setTimeout(() => $('toast').textContent = '', 4000); }
+async function copyResult() {
+  const r = S.result, bar = '▰'.repeat(Math.round(r.score / 10)) + '▱'.repeat(10 - Math.round(r.score / 10));
+  const crowd = S.crowdIou != null ? `\nCrowd: ${Math.round(S.crowdIou * 100)}%` : '';
+  const text = `OUTLINE No. ${dayNo + 1} · ${S.shape.name}\n${bar} ${r.score}%${r.peeked ? ' (peeked)' : ''}\n${verdict(r.score)}${crowd}`;
+  try { await navigator.clipboard.writeText(text); toast('Copied. Paste it in the comments.'); }
+  catch { $('toast').textContent = text.replace(/\n/g, ' · '); }
+}
+
+window.addEventListener('resize', resize);
+setShape(todayId); resize(); connect();
+</script>
