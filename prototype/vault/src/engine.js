@@ -92,7 +92,7 @@ function cycle(V) {
   return L;
 }
 // Breadth-first search for the fewest-moves crack. Returns the move list or null.
-function solve(V, maxT = 80) {
+function solve(V, maxT = 150) {
   const L = cycle(V), start = { pos: V.start, t: 0, ko: 0 }, seen = new Set(), q = [[start, '']];
   const key = s => s.pos + '|' + (s.t % L) + '|' + s.ko;
   seen.add(key(start));
