@@ -1,0 +1,347 @@
+<title>Vault</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Inter:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a floor plan under a desk lamp. The board is the hero; a thin job sheet runs above and below it. One committed night palette. */
+:root {
+  --night: #0f1116;      /* page */
+  --floor: #2b3242;      /* floor tiles */
+  --floor2: #30384a;
+  --wall: #566079;       /* wall tops */
+  --wallside: #12151c;
+  --text: #eef0f4;
+  --muted: #8b93a5;
+  --you: #f6f3ea;        /* the thief */
+  --gem: #5ef0d6;        /* the prize */
+  --guard: #ffb547;      /* guards and their torches */
+  --laser: #ff4d5e;
+  --cam: #8fb3ff;
+  --display: "Chakra Petch", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, -apple-system, sans-serif;
+  --mono: "DM Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  background: var(--night); color: var(--text); font-family: var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px 20px;
+  -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+}
+.app { max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.mark { font-family: var(--display); font-weight: 700; font-size: 1.4rem; letter-spacing: 0.22em; }
+.mark span { color: var(--gem); }
+.job { display: flex; gap: 6px; }
+.job i { width: 22px; height: 6px; border-radius: 3px; background: #ffffff1c; }
+.job i.done { background: var(--gem); }
+.job i.now { background: var(--text); }
+.title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.vname { font-family: var(--display); font-weight: 700; font-size: 1.7rem; line-height: 1.05; }
+.vno { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+.crowd { font-size: 0.88rem; color: var(--muted); line-height: 1.45; min-height: 1.3em; }
+.crowd b { color: var(--text); font-weight: 600; }
+.board { position: relative; border-radius: 12px; overflow: hidden; box-shadow: 0 24px 60px -30px #000, 0 0 0 1px #ffffff10; }
+canvas#board { display: block; width: 100%; touch-action: none; }
+.overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; background: #0f1116c4; backdrop-filter: blur(2px); }
+.overlay h2 { font-family: var(--display); font-weight: 700; font-size: 2rem; margin: 0; letter-spacing: 0.04em; }
+.overlay p { margin: 0; color: var(--text); opacity: 0.9; line-height: 1.45; max-width: 30ch; }
+.overlay .big { font-family: var(--mono); font-size: 0.85rem; color: var(--muted); }
+.caught h2 { color: var(--laser); }
+.won h2 { color: var(--gem); }
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.meta { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.meta b { color: var(--text); font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.78rem; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+button { font: 600 1rem var(--body); border-radius: 10px; padding: 12px 18px; border: 0; cursor: pointer; transition: transform .1s ease; }
+button:active { transform: scale(0.97); }
+button:focus-visible { outline: 2px solid var(--gem); outline-offset: 3px; }
+.primary { background: var(--gem); color: #04211c; }
+.ghost { background: #ffffff10; color: var(--text); }
+.hint { font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+.hint b { color: var(--text); font-weight: 600; }
+.toast { font-family: var(--mono); font-size: 0.8rem; color: var(--gem); min-height: 1.2em; }
+@media (prefers-reduced-motion: reduce) { button { transition: none; } }
+</style>
+
+<div class="app">
+  <header>
+    <div class="mark">VAU<span>L</span>T</div>
+    <div class="job" id="job" aria-label="Tonight's job"></div>
+  </header>
+  <div class="title">
+    <div class="vname" id="vname"></div>
+    <div class="vno" id="vno"></div>
+  </div>
+  <div class="crowd" id="crowd"></div>
+  <div class="board">
+    <canvas id="board" aria-label="Vault floor plan. Swipe or use the arrow keys to move one tile. Tap yourself or press space to wait."></canvas>
+    <div class="overlay" id="overlay" hidden></div>
+  </div>
+  <div class="bar">
+    <div class="meta" id="meta"></div>
+    <button class="ghost" id="wait" type="button">Wait a turn</button>
+  </div>
+  <div class="legend">
+    <span style="--c: var(--guard)">guard, sees 2–3 ahead</span>
+    <span style="--c: var(--laser)">laser, on and off</span>
+    <span style="--c: var(--cam)">camera, turns each move</span>
+  </div>
+  <p class="hint"><b>Swipe</b> or tap a tile next to you to move. Everything moves after you do. Red corners mark tiles that will be watched after your next move. Sneak into a guard <b>from behind</b> to knock them out.</p>
+  <div class="toast" id="toast" role="status"></div>
+</div>
+
+<script>
+/*ENGINE*/
+/*LEVELS*/
+const $ = id => document.getElementById(id);
+const cv = $('board'), ctx = cv.getContext('2d');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = Object.fromEntries(['night', 'floor', 'floor2', 'wall', 'wallside', 'text', 'muted', 'you', 'gem', 'guard', 'laser', 'cam'].map(k => [k, css('--' + k)]));
+let DPR = 1, T = 0; // tile size in css px
+
+// ---------- game state ----------
+const G = { li: 0, V: null, s: null, prev: null, anim: 1, a0: 0, tries: 0, moves: 0, over: null, progress: {} };
+function load(li) {
+  G.li = li; G.V = parse(LEVELS[li]); G.over = null; G.s = { pos: G.V.start, t: 0, ko: 0, status: 'play' }; G.prev = G.s; G.anim = 1; G.moves = 0;
+  G.tries = (G.progress[key()]?.tries || 0);
+  $('overlay').hidden = true; resize(); render();
+}
+const key = () => 'h' + (G.li + 1);
+function move(m) {
+  if (G.over || G.anim < 1) return;
+  const n = step(G.V, G.s, m);
+  if (!n) { bump(); return; }
+  if (n.knocked >= 0) sfx.knock(); else sfx.step();
+  G.prev = G.s; G.s = n; G.moves++; G.a0 = performance.now(); G.anim = 0;
+  if (n.status !== 'play') setTimeout(() => finish(n), 200);
+  render();
+}
+let bumpT = 0; function bump() { bumpT = performance.now(); }
+function finish(n) {
+  const rec = G.progress[key()] || { tries: 0, won: false, moves: 0, x: [] };
+  rec.tries++; G.tries = rec.tries;
+  if (n.status === 'caught') {
+    sfx.alarm();
+    rec.x = (rec.x || []).concat([n.pos[1] * G.V.w + n.pos[0]]).slice(-20);
+    G.over = 'caught';
+    const why = { guard: 'A guard spotted you.', laser: 'You walked into a live laser.', camera: 'The camera caught you.' }[n.cause] || 'You were caught.';
+    showOverlay('caught', 'CAUGHT', why, 'Tap to try again');
+  } else {
+    sfx.win();
+    const best = solveCache[key()] ??= (solve(G.V) || '').length;
+    if (!rec.won || G.moves < rec.moves) rec.moves = G.moves;
+    rec.won = true; G.over = 'won';
+    const last = G.li === LEVELS.length - 1;
+    showOverlay('won', 'CRACKED', `${G.moves} moves${G.moves <= best ? ' · a perfect run' : ` · best possible is ${best}`}. Caught ${rec.tries - 1} ${rec.tries - 1 === 1 ? 'time' : 'times'} first.`, last ? 'That was tonight’s last vault' : 'Tap for the next vault');
+  }
+  G.progress[key()] = rec; save(); render();
+}
+const solveCache = {};
+function showOverlay(cls, h, p, sub) {
+  const o = $('overlay'); o.className = 'overlay ' + cls; o.hidden = false;
+  o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="big">${sub}</div>`;
+}
+$('overlay').addEventListener('click', () => {
+  if (G.over === 'caught') load(G.li);
+  else if (G.over === 'won' && G.li < LEVELS.length - 1) load(G.li + 1);
+});
+
+// ---------- input ----------
+let down = null;
+cv.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; sfx.wake(); });
+cv.addEventListener('pointerup', e => {
+  if (!down) return; const dx = e.clientX - down[0], dy = e.clientY - down[1]; down = null;
+  if (Math.hypot(dx, dy) > 22) { move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U')); return; }
+  const r = cv.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / T), y = Math.floor((e.clientY - r.top) / T);
+  const [px, py] = G.s.pos, ddx = x - px, ddy = y - py;
+  if (!ddx && !ddy) move('W');
+  else if (Math.abs(ddx) + Math.abs(ddy) === 1) move(ddx ? (ddx > 0 ? 'R' : 'L') : (ddy > 0 ? 'D' : 'U'));
+  else if (Math.abs(ddx) >= Math.abs(ddy)) move(ddx > 0 ? 'R' : 'L'); else move(ddy > 0 ? 'D' : 'U');
+});
+addEventListener('keydown', e => {
+  const m = { ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R', ' ': 'W', w: 'U', s: 'D', a: 'L', d: 'R' }[e.key];
+  if (m) { e.preventDefault(); sfx.wake(); if (G.over && (e.key === ' ')) $('overlay').click(); else move(m); }
+  if (e.key === 'r') load(G.li);
+});
+$('wait').addEventListener('click', () => { sfx.wake(); move('W'); });
+
+// ---------- drawing ----------
+function resize() {
+  DPR = Math.min(devicePixelRatio || 1, 2.5);
+  const w = cv.clientWidth || 400; T = w / G.V.w;
+  cv.style.height = (T * G.V.h) + 'px'; cv.width = Math.round(w * DPR); cv.height = Math.round(T * G.V.h * DPR);
+}
+const lerp = (a, b, k) => a + (b - a) * k;
+const ease = k => 1 - Math.pow(1 - k, 3);
+function tileCenter(x, y) { return [(x + 0.5) * T, (y + 0.5) * T]; }
+function frame(now) {
+  if (G.anim < 1) G.anim = Math.min(1, (now - G.a0) / 150);
+  draw(now); requestAnimationFrame(frame);
+}
+function draw(now) {
+  const V = G.V, s = G.s, k = ease(G.anim), t = s.t, tp = G.prev.t;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = C.night; ctx.fillRect(0, 0, V.w * T, V.h * T);
+  // floor and walls
+  for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
+    const wall = V.walls.has(x + ',' + y) && !V.cams.some(c => c.at[0] === x && c.at[1] === y) && !V.lasers.some(l => l.at[0] === x && l.at[1] === y);
+    if (wall) { ctx.fillStyle = C.wallside; ctx.fillRect(x * T, y * T, T, T); ctx.fillStyle = C.wall; ctx.fillRect(x * T + 1, y * T + 1, T - 2, T * 0.78); }
+    else { ctx.fillStyle = (x + y) % 2 ? C.floor : C.floor2; ctx.fillRect(x * T, y * T, T, T); }
+  }
+  // where others were caught
+  for (const [idx, n] of crowdMarks) {
+    const x = idx % V.w, y = Math.floor(idx / V.w), [cx, cy] = tileCenter(x, y), r = T * 0.13;
+    ctx.globalAlpha = Math.min(0.75, 0.18 + 0.1 * n); ctx.strokeStyle = C.laser; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r); ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // gem
+  { const [cx, cy] = tileCenter(...V.gem), r = T * 0.24 * (1 + 0.06 * Math.sin(now / 300));
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, T * 0.7); g.addColorStop(0, C.gem + '55'); g.addColorStop(1, C.gem + '00');
+    ctx.fillStyle = g; ctx.fillRect(cx - T, cy - T, 2 * T, 2 * T);
+    ctx.fillStyle = C.gem; ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r * 0.8, cy - r * 0.2); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r * 0.8, cy - r * 0.2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx - r * 0.8, cy - r * 0.2); ctx.lineTo(cx + r * 0.8, cy - r * 0.2); ctx.stroke(); }
+  // lasers
+  for (const l of V.lasers) {
+    const on = laserOn(l, t), next = laserOn(l, t + 1), [ex, ey] = tileCenter(...l.at);
+    const end = l.beam.length ? tileCenter(...l.beam[l.beam.length - 1]) : [ex, ey], [dx, dy] = DIRS[l.dir];
+    const fx = end[0] + dx * T * 0.5, fy = end[1] + dy * T * 0.5;
+    if (on) { ctx.strokeStyle = C.laser; ctx.shadowColor = C.laser; ctx.shadowBlur = 12; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(fx, fy); ctx.stroke(); ctx.shadowBlur = 0; ctx.lineWidth = 1; ctx.strokeStyle = '#fff'; ctx.stroke(); }
+    else if (next) { ctx.strokeStyle = C.laser; ctx.globalAlpha = 0.5 + 0.4 * Math.sin(now / 90); ctx.setLineDash([4, 6]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(fx, fy); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; }
+    ctx.fillStyle = C.wallside; ctx.fillRect(l.at[0] * T + T * 0.2, l.at[1] * T + T * 0.2, T * 0.6, T * 0.6);
+    ctx.fillStyle = on ? C.laser : '#5a2a31'; ctx.beginPath(); ctx.arc(ex, ey, T * 0.12, 0, 7); ctx.fill();
+  }
+  // cameras
+  for (const c of V.cams) {
+    const d = camDir(c, t), tiles = ray(V, c.at, d, c.see);
+    cone(c.at, d, tiles.length, C.cam, 0.22);
+    const [cx, cy] = tileCenter(...c.at); ctx.fillStyle = C.wallside; ctx.beginPath(); ctx.arc(cx, cy, T * 0.32, 0, 7); ctx.fill();
+    ctx.fillStyle = C.cam; ctx.beginPath(); ctx.arc(cx, cy, T * 0.14, 0, 7); ctx.fill();
+    const nd = DIRS[camDir(c, t + 1)]; ctx.strokeStyle = C.cam; ctx.globalAlpha = 0.6; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx + nd[0] * T * 0.2, cy + nd[1] * T * 0.2); ctx.lineTo(cx + nd[0] * T * 0.34, cy + nd[1] * T * 0.34); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  // guards: torch cones, bodies, next step arrows
+  for (const g of V.guards) {
+    const out = s.ko & (1 << g.i), wasOut = G.prev.ko & (1 << g.i);
+    const a = guardAt(g, tp), b = guardAt(g, t);
+    const gx = out && !wasOut ? b[0] : lerp(a[0], b[0], k), gy = out && !wasOut ? b[1] : lerp(a[1], b[1], k);
+    if (out) { const [cx, cy] = [(a[0] + 0.5) * T, (a[1] + 0.5) * T]; ctx.globalAlpha = 0.45; ctx.fillStyle = C.guard; ctx.beginPath(); ctx.ellipse(cx, cy, T * 0.3, T * 0.16, 0.5, 0, 7); ctx.fill(); ctx.globalAlpha = 1; continue; }
+    const tiles = ray(V, [b[0], b[1]], b[2], g.see);
+    cone([gx, gy], b[2], tiles.length, C.guard, 0.2 * k + 0.05);
+    const [cx, cy] = [(gx + 0.5) * T, (gy + 0.5) * T];
+    ctx.fillStyle = C.guard; ctx.beginPath(); ctx.arc(cx, cy, T * 0.27, 0, 7); ctx.fill();
+    const [fx, fy] = DIRS[b[2]]; ctx.fillStyle = C.night; ctx.beginPath(); ctx.arc(cx + fx * T * 0.12, cy + fy * T * 0.12, T * 0.07, 0, 7); ctx.fill();
+    const n = guardAt(g, t + 1); if (n[0] !== b[0] || n[1] !== b[1]) { const [nx, ny] = tileCenter(n[0], n[1]); ctx.strokeStyle = C.guard; ctx.globalAlpha = 0.55; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(lerp(cx, nx, 0.7), lerp(cy, ny, 0.7)); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; }
+  }
+  // next-turn danger: red corners
+  if (!G.over) {
+    const d = danger(V, t + 1, s.ko);
+    for (const g of V.guards) if (!(s.ko & (1 << g.i))) { const n = guardAt(g, t + 1); d.set(n[0] + ',' + n[1], 'guard'); }
+    ctx.strokeStyle = C.laser; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
+    for (const kk of d.keys()) { const [x, y] = kk.split(',').map(Number), m = T * 0.12, l = T * 0.2, X = x * T, Y = y * T;
+      ctx.beginPath();
+      ctx.moveTo(X + m, Y + m + l); ctx.lineTo(X + m, Y + m); ctx.lineTo(X + m + l, Y + m);
+      ctx.moveTo(X + T - m - l, Y + m); ctx.lineTo(X + T - m, Y + m); ctx.lineTo(X + T - m, Y + m + l);
+      ctx.moveTo(X + m, Y + T - m - l); ctx.lineTo(X + m, Y + T - m); ctx.lineTo(X + m + l, Y + T - m);
+      ctx.moveTo(X + T - m - l, Y + T - m); ctx.lineTo(X + T - m, Y + T - m); ctx.lineTo(X + T - m, Y + T - m - l);
+      ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+  // the thief
+  { const p = G.prev.pos, q = s.pos; let px = lerp(p[0], q[0], k), py = lerp(p[1], q[1], k);
+    const bk = Math.max(0, 1 - (now - bumpT) / 180); px += Math.sin(now / 20) * 0.04 * bk;
+    const [cx, cy] = [(px + 0.5) * T, (py + 0.5) * T];
+    ctx.fillStyle = '#00000066'; ctx.beginPath(); ctx.ellipse(cx, cy + T * 0.2, T * 0.22, T * 0.08, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = s.status === 'caught' ? C.laser : C.you; ctx.beginPath(); ctx.arc(cx, cy, T * 0.25, 0, 7); ctx.fill();
+    ctx.fillStyle = C.night; ctx.fillRect(cx - T * 0.17, cy - T * 0.07, T * 0.34, T * 0.09); // the mask
+    ctx.fillStyle = C.you; ctx.fillRect(cx - T * 0.1, cy - T * 0.05, T * 0.05, T * 0.05); ctx.fillRect(cx + T * 0.05, cy - T * 0.05, T * 0.05, T * 0.05);
+    if (s.status === 'caught' && s.by) { const [bx, by] = tileCenter(...s.by); ctx.fillStyle = C.laser; ctx.font = `700 ${T * 0.45}px ${css('--display')}`; ctx.textAlign = 'center'; ctx.fillText('!', bx, by - T * 0.35); }
+  }
+}
+function cone(at, dir, len, color, alpha) {
+  if (!len) return;
+  const [dx, dy] = DIRS[dir], [cx, cy] = [(at[0] + 0.5) * T, (at[1] + 0.5) * T], L = (len + 0.5) * T, Wd = 0.5 * T;
+  const ex = cx + dx * L, ey = cy + dy * L, px = -dy, py = dx;
+  const g = ctx.createLinearGradient(cx, cy, ex, ey); g.addColorStop(0, color + 'aa'); g.addColorStop(1, color + '10');
+  ctx.globalAlpha = Math.min(1, alpha * 3); ctx.fillStyle = g; ctx.beginPath();
+  ctx.moveTo(cx + px * T * 0.12, cy + py * T * 0.12); ctx.lineTo(ex + px * Wd, ey + py * Wd); ctx.lineTo(ex - px * Wd, ey - py * Wd); ctx.lineTo(cx - px * T * 0.12, cy - py * T * 0.12);
+  ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+}
+
+// ---------- crowd ----------
+let db = null, me = null, players = [], crowdStatus = 'loading', crowdMarks = new Map();
+async function connect() {
+  try {
+    if (!window.claude?.use) { crowdStatus = 'off'; render(); return; }
+    const [d, u] = await Promise.all([claude.use('db'), claude.use('user')]);
+    if (!d || !u) { crowdStatus = 'off'; render(); return; }
+    db = d; me = await u.id();
+    const timer = setTimeout(() => { if (crowdStatus === 'loading') { crowdStatus = 'slow'; render(); } }, 10000);
+    db.collection('players').onSnapshot(snap => {
+      players = snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() }));
+      const mine = players.find(p => p.id === me)?.v;
+      if (mine) for (const [k, r] of Object.entries(mine)) if (!G.progress[k] || (r.tries || 0) > (G.progress[k].tries || 0)) G.progress[k] = r;
+      if (!snap.metadata.fromCache) { clearTimeout(timer); crowdStatus = 'live'; }
+      render();
+    }, () => { clearTimeout(timer); crowdStatus = 'off'; render(); });
+  } catch { crowdStatus = 'off'; render(); }
+}
+function loadLocal() { try { const v = JSON.parse(localStorage.getItem('vault:progress') || '{}'); if (v && typeof v === 'object') G.progress = v; } catch {} }
+let saving = false, again = false;
+async function save() {
+  try { localStorage.setItem('vault:progress', JSON.stringify(G.progress)); } catch {}
+  if (!db || !me) return;
+  if (saving) { again = true; return; }
+  saving = true;
+  try { await db.collection('players').doc(me).set({ v: G.progress }); }
+  catch { toast('Your run could not be saved to the shared board. Check your connection and reopen the page.'); }
+  saving = false; if (again) { again = false; save(); }
+}
+
+// ---------- ui ----------
+function render() {
+  const k = key(), others = players.filter(p => p.id !== me).map(p => p.v?.[k]).filter(Boolean);
+  crowdMarks = new Map();
+  for (const r of others) for (const i of (r.x || [])) crowdMarks.set(i, (crowdMarks.get(i) || 0) + 1);
+  $('job').innerHTML = LEVELS.map((_, i) => `<i class="${G.progress['h' + (i + 1)]?.won ? 'done' : i === G.li ? 'now' : ''}" title="Vault ${i + 1}"></i>`).join('');
+  $('vname').textContent = LEVELS[G.li].name;
+  $('vno').textContent = `Vault ${G.li + 1} of ${LEVELS.length}`;
+  const caught = others.reduce((n, r) => n + (r.tries || 0) - (r.won ? 1 : 0), 0), cracked = others.filter(r => r.won).length;
+  let line;
+  if (crowdStatus === 'off') line = 'Other thieves are not visible in this view. Open the page signed in to see where they were caught.';
+  else if (crowdStatus !== 'live') line = crowdStatus === 'slow' ? 'The shared board is taking a while to load.' : 'Checking who has been here…';
+  else if (!others.length) line = '<b>Nobody has tried this vault yet.</b> Your mistakes will be the first marks on the floor.';
+  else line = `This vault has caught <b>${caught} ${caught === 1 ? 'thief' : 'thieves'}</b> and been cracked by <b>${cracked}</b>. Red marks show where people were caught.`;
+  $('crowd').innerHTML = line;
+  const rec = G.progress[k];
+  $('meta').innerHTML = `moves <b>${G.moves}</b> · tries <b>${(rec?.tries || 0) + (G.over ? 0 : 1)}</b>`;
+}
+function toast(t) { $('toast').textContent = t; clearTimeout(toast.t); toast.t = setTimeout(() => $('toast').textContent = '', 4500); }
+
+// ---------- sound ----------
+const sfx = {
+  ac: null,
+  wake() { if (!this.ac) { try { this.ac = new (window.AudioContext || window.webkitAudioContext)(); } catch {} } this.ac?.resume?.(); },
+  tone(f, d, type = 'sine', v = 0.12, f2) {
+    const a = this.ac; if (!a) return; const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + d + 0.02);
+  },
+  step() { this.tone(180, 0.06, 'triangle', 0.08, 120); },
+  knock() { this.tone(140, 0.18, 'square', 0.1, 60); },
+  alarm() { this.tone(880, 0.16, 'sawtooth', 0.08); setTimeout(() => this.tone(660, 0.22, 'sawtooth', 0.08), 170); },
+  win() { [660, 880, 1320].forEach((f, i) => setTimeout(() => this.tone(f, 0.25, 'sine', 0.1), i * 90)); },
+};
+
+addEventListener('resize', () => { resize(); });
+loadLocal();
+load(Math.max(0, LEVELS.findIndex((_, i) => !G.progress['h' + (i + 1)]?.won)));
+requestAnimationFrame(frame); connect();
+</script>
