@@ -8,7 +8,7 @@
     "build": "npm run build:client -- --metafile=dist/client.meta.json --minify && npm run build:server -- --metafile=dist/server.meta.json --minify",
     "build:client": "esbuild --bundle --log-level=warning --sourcemap=linked --target=es2023 --format=esm --outdir=public --platform=browser src/client/splash.ts src/client/game.js",
     "build:server": "esbuild --bundle --log-level=warning --sourcemap=linked --target=es2023 --format=cjs --outdir=dist/server --platform=node src/server/index.ts",
-    "clean": "rm -rf dist/ public/*.js*",
+    "clean": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});for(const f of fs.readdirSync('public'))if(/\\.js(\\.map)?$/.test(f))fs.rmSync('public/'+f)\"",
     "format": "npm run lint -- --fix",
     "lint": "biome check --error-on-warnings",
     "playtest": "npm run build && devvit playtest",
@@ -16,7 +16,7 @@
     "test:types": "tsc --build",
     "test:unit": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test src/**/*.test.ts",
     "publish": "npm run clean && npm run build && devvit publish",
-    "watch": "sh -c 'trap \"kill 0\" exit; npm run build:client -- --watch=forever& npm run build:server -- --watch=forever& wait' --",
+    "watch": "node tools/watch.mjs",
     "upload": "npm run build && devvit upload"
   },
   "devDependencies": {
