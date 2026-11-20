@@ -51,7 +51,7 @@ createServer(async (req, rsp) => {
     const user = String(req.headers['x-test-user'] ?? 't2_local')
     await runWithContext(
       {
-        appName: 'vault-night',
+        appName: 'vault-heist',
         postId: 't3_local',
         userId: user,
         username: user,

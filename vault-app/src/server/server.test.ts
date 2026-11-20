@@ -59,7 +59,7 @@ before(async () => {
     const user = String(req.headers['x-test-user'] ?? 't2_alice')
     await runWithContext(
       {
-        appName: 'vault-night',
+        appName: 'vault-heist',
         postId: 't3_1',
         userId: user,
         username: user,
