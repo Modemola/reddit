@@ -4,6 +4,7 @@ import { showToast } from '@devvit/web/client';
 import { Endpoint } from '../shared/api.ts';
 import { advanceGuards, camDir, DIRS, danger, guardPos, HEARING, laserOn, parse, pebbleTargets, ray, solve, startState, step } from '../shared/engine.ts';
 import { bestMoves, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEEPS, W } from '../shared/vault.ts';
+import { GIF } from './gif.js';
 import { MusicPlayer } from './music.js';
 const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -141,7 +142,7 @@ function play(L, key, label, next, owner) {
   Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1 });
   G.log = []; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
   G.best = (solve(G.V) || []).length;
-  $('overlay').hidden = true; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
+  $('overlay').hidden = true; $('coach').hidden = true; coachState.tip = null; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
 }
 function restart() { play(G.L, G.key, G.label, G.next, G.owner); }
 function move(m) {
@@ -178,8 +179,9 @@ function finish(n) {
 const why = c => ({ guard: 'A guard spotted you.', laser: 'You walked into a live laser.', camera: 'The camera caught you.' }[c] || 'You were caught.');
 function overlay(cls, h, p, sub) {
   const o = $('overlay'); o.className = 'overlay ' + cls; o.hidden = false;
-  o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="small">${sub}</div>` + (G.key !== 'test' ? `<button class="ghost share" type="button" id="share-btn">Copy result for the comments</button>` : '');
-  const sb = $('share-btn'); if (sb) sb.onclick = e => { e.stopPropagation(); copyResult(cls); };
+  const canShare = G.key !== 'test' && G.frames.length > 2 && !shared.has(G.key);
+  o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="small">${sub}</div>` + (canShare ? `<button class="primary share" type="button" id="share-btn">${cls === 'won' ? 'Post this crack in the comments' : 'Post this bust in the comments'}</button>` : '');
+  const sb = $('share-btn'); if (sb) sb.onclick = e => { e.stopPropagation(); void shareRun(sb); };
 }
 $('overlay').onclick = () => {
   if (G.key === 'test') { show(G.label === 'Test run' ? 'build' : 'home'); return; }
@@ -554,6 +556,8 @@ async function load() {
     INIT = await api(Endpoint.Init); progress = INIT.progress || {}; crowdStatus = 'live';
     dayNo = INIT.night; PARTS = INIT.parts; $('night').textContent = 'Night ' + (dayNo + 1);
   } catch { crowdStatus = 'off'; }
+  // someone who has never played starts in the first vault, not on a menu
+  if (view === 'home' && INIT && !Object.keys(progress).length) { playHouse(0); return; }
   refresh();
 }
 async function submitAttempt(key, moves) {
@@ -573,6 +577,101 @@ async function copyResult(cls) {
   try { await navigator.clipboard.writeText(text); toast('Copied. Paste it in the comments.'); } catch { toast(text); }
 }
 function toast(t) { showToast(t); }
+
+// ---------- your run as a GIF comment ----------
+// While something moves on the board, keep small copies of it (thinking time is skipped).
+const CAP_W = 180;
+function capture(now) {
+  const moving = G.anim < 1 || G.pebbleFx || G.barks.some(b => now >= b.t0) || (G.endAt && now - G.endAt < 1100);
+  const first = !G.frames.length;
+  if (!first && (!moving || now - G.lastCap < 90)) return;
+  if (G.endAt && now - G.endAt > 1100) return;
+  const cv = $('board'), h = Math.round(CAP_W * cv.height / cv.width);
+  const c = capture.c || (capture.c = document.createElement('canvas')); c.width = CAP_W; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(cv, 0, 0, CAP_W, h);
+  G.frames.push({ rgba: x.getImageData(0, 0, CAP_W, h).data, delay: first ? 700 : 90, h });
+  if (G.frames.length > 160) G.frames.splice(1, 1);
+  G.lastCap = now;
+}
+function gifDataUrl() {
+  let fr = G.frames;
+  const w = CAP_W, h = fr[0].h, bar = 26, H = h + bar, res = G.result || { status: 'play', moves: G.moves };
+  const text = `VAULT · ${G.L.name} · ${res.status === 'won' ? `cracked in ${res.moves}` : `caught on move ${res.moves}`}`;
+  const c = document.createElement('canvas'); c.width = w; c.height = H; const x = c.getContext('2d', { willReadFrequently: true });
+  for (let tries = 0; tries < 4; tries++) {
+    const frames = fr.map((f, i) => {
+      x.fillStyle = C.night; x.fillRect(0, 0, w, H);
+      x.putImageData(new ImageData(new Uint8ClampedArray(f.rgba), w, h), 0, 0);
+      x.fillStyle = res.status === 'caught' ? C.laser : C.gem; x.fillRect(0, h, w, 2);
+      x.fillStyle = C.text; x.font = `600 11px ${css('--body')}`; x.textAlign = 'center'; x.fillText(text, w / 2, h + 17, w - 10);
+      return { rgba: x.getImageData(0, 0, w, H).data, delay: i === fr.length - 1 ? 1600 : f.delay };
+    });
+    const bytes = GIF.encode(frames, w, H);
+    let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    const url = 'data:image/gif;base64,' + btoa(bin);
+    if (url.length < 1_800_000) return url;
+    fr = fr.filter((_, i) => i % 2 === 0 || i === fr.length - 1); // too big: keep every other frame
+  }
+  return null;
+}
+const shared = new Set();
+async function shareRun(btn) {
+  btn.disabled = true; btn.textContent = 'Posting…';
+  try {
+    let gif = null; try { gif = gifDataUrl(); } catch {}
+    const rsp = await api(Endpoint.Share, { key: G.key, moves: G.log.slice(), gif });
+    shared.add(G.key);
+    btn.textContent = 'Posted to the comments';
+    toast(rsp.posted === 'gif' ? 'Your run is in the comments.' : 'Your run is in the comments (text only this time).');
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Try posting again';
+    toast(e.message);
+  }
+}
+
+// ---------- first-run coach ----------
+// One short tip on the board, at the moment it matters, each shown once.
+const TIPS = {
+  move: 'Swipe, or tap a tile next to you, to move. Everything else moves after you.',
+  corners: 'Red corners are watched after your next move. Tap yourself to wait a turn.',
+  arrow: 'The dashed line shows where a guard steps next. Time your move around it.',
+  behind: 'That guard isn’t facing you. Walk into him from behind or the side to knock him out.',
+  pebble: 'This guard faces you. Tap Pebble and throw it past him: he’ll turn to look.',
+  aim: 'Tap a ringed tile. Guards within 3 tiles turn to the noise for two turns.',
+  laser: 'A flickering dashed beam fires next turn. Step through when it’s dark.',
+  camera: 'The camera turns every move. Slip past when it looks away.',
+};
+let tipsSeen = {}; try { tipsSeen = JSON.parse(localStorage.getItem('vault:tips') || '{}') || {}; } catch {}
+const coachState = { tip: null, at: 0, moves: 0 };
+function showTip(k) {
+  if (tipsSeen[k] || coachState.tip === k) return false;
+  tipsSeen[k] = 1; try { localStorage.setItem('vault:tips', JSON.stringify(tipsSeen)); } catch {}
+  coachState.tip = k; coachState.at = performance.now(); coachState.moves = G.moves;
+  const el = $('coach'); el.textContent = TIPS[k]; el.hidden = false;
+  return true;
+}
+function coach() {
+  const el = $('coach');
+  // the opening tip makes way as soon as you move, so a warning can take its place
+  if (coachState.tip === 'move' && G.moves >= 1) { el.hidden = true; coachState.tip = null; }
+  if (coachState.tip && (G.over || G.moves - coachState.moves >= 2) && performance.now() - coachState.at > 2500) { el.hidden = true; coachState.tip = null; }
+  if (view !== 'play' || G.over || G.key === 'test' || coachState.tip) return;
+  const V = G.V, s = G.s, nextS = { ...s, t: s.t + 1, gs: advanceGuards(s.gs) };
+  if (G.aim && showTip('aim')) return;
+  if (G.moves === 0 && showTip('move')) return;
+  if (G.key === 'h3' && G.moves >= 2 && s.peb && showTip('pebble')) return;
+  const near = (x, y) => Math.abs(x - s.pos[0]) + Math.abs(y - s.pos[1]) === 1;
+  const d = danger(V, nextS);
+  for (const k of d.keys()) { const [x, y] = k.split(',').map(Number); if (near(x, y) && showTip('corners')) return; }
+  for (const g of V.guards) {
+    if (s.ko & (1 << g.i)) continue;
+    const [gx, gy, f] = guardPos(g, s), [fx, fy] = DIRS[f];
+    if (near(gx, gy) && !(gx + fx === s.pos[0] && gy + fy === s.pos[1]) && showTip('behind')) return;
+  }
+  if ((progress[G.key]?.tries || 0) >= 1 && V.guards.length && showTip('arrow')) return;
+  if (V.lasers.some(l => !laserOn(l, s.t) && laserOn(l, s.t + 1)) && showTip('laser')) return;
+  if (V.cams.length && showTip('camera')) return;
+}
 
 // ---------- sound ----------
 let soundOn = true; try { soundOn = localStorage.getItem('vault:sound') !== 'off'; } catch {}
@@ -616,7 +715,7 @@ renderSound();
 
 // ---------- loop ----------
 function frame(now) {
-  if (view === 'play' && G.V) { if (G.anim < 1) G.anim = Math.min(1, (now - G.a0) / 150); drawPlay(now); }
+  if (view === 'play' && G.V) { if (G.anim < 1) G.anim = Math.min(1, (now - G.a0) / 150); drawPlay(now); capture(now); coach(); }
   if (view === 'build') drawBuilder(now);
   requestAnimationFrame(frame);
 }

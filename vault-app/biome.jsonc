@@ -8,7 +8,8 @@
       "!dist/",
       "!public/*.js*",
       "!src/client/game.js",
-      "!src/client/music.js"
+      "!src/client/music.js",
+      "!src/client/gif.js"
     ]
   },
   "formatter": {

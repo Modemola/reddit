@@ -30,7 +30,11 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 - Red marks on the floor show where other people were caught.
 - Deadliest vaults rise to the top of tonight’s list.
 - A new post goes up every night automatically.
-- Results copy straight into the comments.
+- After a crack or a bust, one tap posts the run to the comments as a GIF, with a caption written by the server from its own replay.
+
+## First time playing
+
+A new player skips the menu and starts in the first vault. Short tips appear on the board at the moment they matter (how to move, what red corners mean, how to knock out a guard, when to throw the pebble), each shown once.
 
 ## Fair play
 

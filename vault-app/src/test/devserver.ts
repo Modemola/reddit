@@ -4,7 +4,13 @@
 import {readFile} from 'node:fs/promises'
 import {createServer} from 'node:http'
 import {extname, join} from 'node:path'
-import {type Context, reddit, redis, runWithContext} from '@devvit/web/server'
+import {
+  type Context,
+  media,
+  reddit,
+  redis,
+  runWithContext,
+} from '@devvit/web/server'
 import {onReq} from '../server/server.ts'
 
 const hashes = new Map<string, Map<string, string>>()
@@ -37,6 +43,22 @@ r.zRange = async (k: string) =>
     .sort((a, b) => b[1] - a[1])
     .map(([member, score]) => ({member, score}))
 reddit.getCurrentUsername = async () => 'local_tester'
+// Uploads and comments are kept in memory and listed at /local/comments.
+const posted: unknown[] = []
+media.upload = async opts => {
+  posted.push({upload: opts.url.slice(0, 40), bytes: opts.url.length})
+  return {mediaId: `m${posted.length}`, mediaUrl: opts.url}
+}
+reddit.submitComment = async opts => {
+  const rt = (opts as {richtext?: {build?: () => string}}).richtext
+  posted.push({
+    ...opts,
+    richtext: rt?.build ? JSON.parse(rt.build()) : undefined,
+  })
+  return {permalink: `/local/comment/${posted.length}`} as Awaited<
+    ReturnType<typeof reddit.submitComment>
+  >
+}
 
 const types: Record<string, string> = {
   '.html': 'text/html',
@@ -47,6 +69,11 @@ const types: Record<string, string> = {
 const port = Number(process.argv[2] ?? 5178)
 createServer(async (req, rsp) => {
   const path = (req.url ?? '/').split('?')[0] ?? '/'
+  if (path === '/local/comments') {
+    rsp.writeHead(200, {'Content-Type': 'application/json'})
+    rsp.end(JSON.stringify(posted))
+    return
+  }
   if (path.startsWith('/api/')) {
     const user = String(req.headers['x-test-user'] ?? 't2_local')
     await runWithContext(

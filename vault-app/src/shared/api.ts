@@ -46,6 +46,10 @@ export type AttemptRsp = {
   stats: VaultStats
 }
 
+/** Post a run as a comment. The server replays `moves` and writes the text itself; `gif` is an optional data URL. */
+export type ShareReq = {key: string; moves: Move[]; gif?: string}
+export type ShareRsp = {posted: 'gif' | 'text'; url: string}
+
 export type PublishReq = {level: Level}
 export type PublishRsp = {vault: PlayerVault}
 
@@ -54,6 +58,7 @@ export const Endpoint = {
   Init: 'api/init',
   Attempt: 'api/attempt',
   Publish: 'api/publish',
+  Share: 'api/share',
   OnAppInstall: 'internal/on/app/install',
   OnMenuNewPost: 'internal/on/menu/new-post',
   OnNewNight: 'internal/on/scheduler/new-night',
@@ -63,6 +68,7 @@ export const EndpointMethod = {
   [Endpoint.Init]: 'GET',
   [Endpoint.Attempt]: 'POST',
   [Endpoint.Publish]: 'POST',
+  [Endpoint.Share]: 'POST',
   [Endpoint.OnAppInstall]: 'POST',
   [Endpoint.OnMenuNewPost]: 'POST',
   [Endpoint.OnNewNight]: 'POST',

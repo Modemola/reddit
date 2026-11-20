@@ -130,3 +130,15 @@ export async function nightOwners(
   })
   return rows.map(r => r.member)
 }
+
+/** One shared comment per player per vault. Returns false if they already shared this one. */
+export async function claimShare(
+  userId: string,
+  key: string,
+): Promise<boolean> {
+  return (await redis.hSetNX(`shared:${userId}`, key, String(Date.now()))) === 1
+}
+
+export async function releaseShare(userId: string, key: string): Promise<void> {
+  await redis.hDel(`shared:${userId}`, [key])
+}

@@ -518,6 +518,26 @@
       background: var(--night);
       min-height: 120px;
     }
+    .coach {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      top: 10px;
+      padding: 9px 12px;
+      border-radius: 10px;
+      background: #0f1116e6;
+      color: var(--text);
+      font-size: 0.86rem;
+      line-height: 1.35;
+      text-align: center;
+      box-shadow:
+        0 0 0 1px #5ef0d655,
+        0 10px 24px -12px #000;
+      pointer-events: none;
+    }
+    .coach[hidden] {
+      display: none;
+    }
     .overlay .share {
       pointer-events: auto;
       font-size: 0.9rem;
@@ -587,6 +607,7 @@
             id="board"
             aria-label="Vault floor plan. Swipe or use the arrow keys to move one tile. Tap yourself or press space to wait."
           ></canvas>
+          <div class="coach" id="coach" role="status" hidden></div>
           <div class="overlay" id="overlay" hidden></div>
         </div>
         <div class="bar">
@@ -604,11 +625,11 @@
         </div>
         <p class="hint">
           <b>Swipe</b>
-          or tap a tile next to you to move. Everything moves after you do. Red
-          corners mark tiles that will be watched after your next move. Sneak
-          into a guard <b>from behind</b> to knock them out. You carry one
-          <b>pebble</b>: throw it and guards within 3 tiles turn to look at the
-          noise for two turns.
+          or tap to move. Red corners are watched next turn. Sneak into a guard
+          <b>from behind</b>
+          to knock him out. One
+          <b>pebble</b>
+          turns nearby guards for two turns.
         </p>
       </main>
 

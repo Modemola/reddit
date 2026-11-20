@@ -1,6 +1,7 @@
 import {once} from 'node:events'
 import type {IncomingMessage, ServerResponse} from 'node:http'
-import {context, reddit} from '@devvit/web/server'
+import {RichTextBuilder} from '@devvit/shared-types/richtext/RichTextBuilder.js'
+import {context, media, reddit} from '@devvit/web/server'
 import type {
   PartialJsonValue,
   TriggerResponse,
@@ -16,6 +17,8 @@ import {
   type PlayerVault,
   type PublishReq,
   type PublishRsp,
+  type ShareReq,
+  type ShareRsp,
 } from '../shared/api.ts'
 import {type Level, type Move, parse, replay} from '../shared/engine.ts'
 import {
@@ -29,11 +32,13 @@ import {
   W,
 } from '../shared/vault.ts'
 import {
+  claimShare,
   getProgress,
   getStats,
   getVault,
   nightOwners,
   recordAttempt,
+  releaseShare,
   saveVault,
 } from './db.ts'
 
@@ -41,6 +46,7 @@ type AnyRsp =
   | InitRsp
   | AttemptRsp
   | PublishRsp
+  | ShareRsp
   | UiResponse
   | TriggerResponse
   | ErrorRsp
@@ -80,6 +86,9 @@ async function route(
         break
       case Endpoint.Publish:
         rsp = await routePublish(reqMsg)
+        break
+      case Endpoint.Share:
+        rsp = await routeShare(reqMsg)
         break
       case Endpoint.OnMenuNewPost:
         rsp = await routeMenuNewPost()
@@ -242,6 +251,83 @@ async function routePublish(
   if (!(await saveVault(night, vault)))
     return {error: 'You already built a vault tonight.', status: 409}
   return {vault: {...vault, stats: await getStats(vault.key)}}
+}
+
+const GIF_PREFIX = 'data:image/gif;base64,'
+const MAX_GIF_CHARS = 2_000_000
+
+/** Posts a run as a comment on the post. The text comes from the server's own replay, never from the client. */
+async function routeShare(
+  reqMsg: IncomingMessage,
+): Promise<ShareRsp | ErrorRsp> {
+  const userId = context.userId
+  const postId = context.postId
+  if (!userId || !postId)
+    return {error: 'Log in to Reddit to post your run.', status: 401}
+  const req = await readJson<ShareReq>(reqMsg)
+  if (
+    typeof req?.key !== 'string' ||
+    !Array.isArray(req.moves) ||
+    req.moves.length > 400 ||
+    !req.moves.every(isMove)
+  )
+    return {error: 'bad run', status: 400}
+  const found = await levelFor(req.key)
+  if (!found) return {error: 'That vault does not exist.', status: 404}
+  const V = parse(found.level)
+  const {state, used, illegal} = replay(V, req.moves)
+  if (illegal || state.status === 'play')
+    return {error: 'Only a finished run can be posted.', status: 400}
+  if (!(await claimShare(userId, req.key)))
+    return {error: 'You already posted a run for this vault.', status: 409}
+
+  const best = bestMoves(found.level)
+  const night = tonight() + 1
+  const verb =
+    state.status === 'won'
+      ? `cracked ${found.level.name} in ${used} moves${used <= best ? ' (a perfect run)' : ` (best possible ${best})`}`
+      : `got caught ${state.cause === 'laser' ? 'by a laser' : state.cause === 'camera' ? 'on camera' : 'by a guard'} in ${found.level.name} on move ${used}`
+  const text = `VAULT, Night ${night}: I ${verb}.`
+
+  try {
+    let gifUrl: string | null = null
+    if (
+      typeof req.gif === 'string' &&
+      req.gif.startsWith(GIF_PREFIX) &&
+      req.gif.length < MAX_GIF_CHARS
+    ) {
+      try {
+        gifUrl = (await media.upload({url: req.gif, type: 'gif'})).mediaUrl
+      } catch (err) {
+        console.error(`gif upload failed; ${err}`)
+      }
+    }
+    // a text line, then the GIF when it uploaded
+    const post = (line: string, runAs: 'USER' | 'APP') =>
+      gifUrl
+        ? reddit.submitComment({
+            id: postId,
+            richtext: new RichTextBuilder()
+              .paragraph(p => p.text({text: line}))
+              .animatedImage({mediaUrl: gifUrl, caption: line}),
+            runAs,
+          })
+        : reddit.submitComment({id: postId, text: line, runAs})
+    let comment: Awaited<ReturnType<typeof post>>
+    try {
+      comment = await post(text, 'USER')
+    } catch (err) {
+      // posting as the player can be unavailable; post from the app and name them instead
+      console.error(`comment as user failed; ${err}`)
+      const name =
+        (await reddit.getCurrentUsername().catch(() => undefined)) ?? 'someone'
+      comment = await post(`u/${name} ${verb} (VAULT, Night ${night}).`, 'APP')
+    }
+    return {posted: gifUrl ? 'gif' : 'text', url: comment.permalink}
+  } catch (err) {
+    await releaseShare(userId, req.key)
+    throw err
+  }
 }
 
 async function createNightPost() {

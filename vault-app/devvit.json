@@ -37,5 +37,12 @@
   "scripts": {
     "dev": "npm run watch",
     "build": "npm run build"
+  },
+  "permissions": {
+    "media": true,
+    "reddit": {
+      "enable": true,
+      "scope": "user"
+    }
   }
 }

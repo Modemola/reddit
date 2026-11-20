@@ -2,13 +2,20 @@ import assert from 'node:assert/strict'
 import {createServer} from 'node:http'
 import type {AddressInfo, Server} from 'node:net'
 import {after, before, beforeEach, test} from 'node:test'
-import {type Context, reddit, redis, runWithContext} from '@devvit/web/server'
+import {
+  type Context,
+  media,
+  reddit,
+  redis,
+  runWithContext,
+} from '@devvit/web/server'
 import {
   type AttemptRsp,
   Endpoint,
   type ErrorRsp,
   type InitRsp,
   type PublishRsp,
+  type ShareRsp,
 } from '../shared/api.ts'
 import {type Level, parse, solve} from '../shared/engine.ts'
 import {HOUSE, nightOf, partsFor} from '../shared/vault.ts'
@@ -35,6 +42,10 @@ const fake = {
     return v
   },
   hLen: async (k: string) => h(k).size,
+  hDel: async (k: string, fields: string[]) => {
+    for (const f of fields) h(k).delete(f)
+    return fields.length
+  },
   zAdd: async (k: string, ...m: {member: string; score: number}[]) => {
     const z = zsets.get(k) ?? zsets.set(k, new Map()).get(k)!
     for (const x of m) z.set(x.member, x.score)
@@ -55,6 +66,23 @@ before(async () => {
     ;(redis as unknown as Record<string, unknown>)[k] = fn
   }
   reddit.getCurrentUsername = async () => 'tester'
+  media.upload = async opts => {
+    if (failUpload) throw Error('upload refused')
+    uploads.push(opts.url)
+    return {mediaId: 'm1', mediaUrl: 'https://i.redd.it/m1.gif'}
+  }
+  reddit.submitComment = async opts => {
+    if (opts.runAs === 'USER' && failAsUser) throw Error('not allowed')
+    // render rich text the way the Reddit client does before sending it
+    const rt = (opts as {richtext?: {build?: () => string}}).richtext
+    comments.push({
+      ...(opts as unknown as Record<string, unknown>),
+      richtext: rt?.build ? rt.build() : rt,
+    })
+    return {permalink: '/r/test/comments/1/x/c1/'} as Awaited<
+      ReturnType<typeof reddit.submitComment>
+    >
+  }
   server = createServer(async (req, rsp) => {
     const user = String(req.headers['x-test-user'] ?? 't2_alice')
     await runWithContext(
@@ -208,4 +236,55 @@ test('publishing: one solvable vault per player per night, and others can crack 
   assert.equal(own.json.stats.tries, 1)
   const alice = await get<InitRsp>(Endpoint.Init)
   assert.equal(alice.mine?.stats.cracked, 1)
+})
+
+const uploads: string[] = []
+const comments: Record<string, unknown>[] = []
+let failUpload = false
+let failAsUser = false
+
+test('sharing a run: server-written text, the GIF attached, once per vault, with fallbacks', async () => {
+  uploads.length = 0
+  comments.length = 0
+  const gif = `data:image/gif;base64,${Buffer.from('GIF89a').toString('base64')}`
+  const sol = solve(parse(HOUSE[0]!))!
+  // an unfinished or made-up run can't be posted
+  const half = await post<ErrorRsp>(Endpoint.Share, {
+    key: 'h1',
+    moves: ['U'],
+    gif,
+  })
+  assert.equal(half.status, 400)
+  const ok = await post<ShareRsp>(Endpoint.Share, {key: 'h1', moves: sol, gif})
+  assert.equal(ok.status, 200)
+  assert.equal(ok.json.posted, 'gif')
+  assert.deepEqual(uploads, [gif])
+  const first = comments[0]!
+  assert.equal(first.runAs, 'USER')
+  assert.match(
+    JSON.stringify(first.richtext),
+    /cracked The Lobby in 8 moves \(a perfect run\)/,
+  )
+  // once per vault
+  assert.equal(
+    (await post<ErrorRsp>(Endpoint.Share, {key: 'h1', moves: sol, gif})).status,
+    409,
+  )
+  // no GIF and no posting as the player: the app posts text that names them
+  failUpload = true
+  failAsUser = true
+  const bust = await post<ShareRsp>(
+    Endpoint.Share,
+    {key: 'h1', moves: ['U', 'U', 'U'], gif},
+    't2_bob',
+  )
+  failUpload = false
+  failAsUser = false
+  assert.equal(bust.json.posted, 'text')
+  const last = comments.at(-1)!
+  assert.equal(last.runAs, 'APP')
+  assert.match(
+    String(last.text),
+    /^u\/tester got caught by a guard in The Lobby on move 2/,
+  )
 })
