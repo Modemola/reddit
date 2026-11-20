@@ -6,7 +6,7 @@
 //   marks:{key}        hash  tile index -> count                         where people were caught
 //   prog:{userId}      hash  key -> Progress (JSON)                      one player's record
 import {redis} from '@devvit/web/server'
-import type {PlayerVault, Progress, VaultStats} from '../shared/api.ts'
+import type {PlayerVault, Progress, Streak, VaultStats} from '../shared/api.ts'
 import type {Level} from '../shared/engine.ts'
 
 export async function getStats(key: string): Promise<VaultStats> {
@@ -141,4 +141,32 @@ export async function claimShare(
 
 export async function releaseShare(userId: string, key: string): Promise<void> {
   await redis.hDel(`shared:${userId}`, [key])
+}
+
+/** A streak counts nights in a row with at least one crack. A missed night resets it. */
+export async function getStreak(
+  userId: string,
+  night: number,
+): Promise<Streak> {
+  const s = await redis.hGetAll(`streak:${userId}`)
+  const last = Number(s.last ?? -9)
+  const count = last >= night - 1 ? Number(s.count ?? 0) : 0
+  return {count, best: Number(s.best ?? 0), tonight: last === night}
+}
+
+/** Called after a crack. Extends the streak once per night. */
+export async function extendStreak(
+  userId: string,
+  night: number,
+): Promise<Streak> {
+  const cur = await getStreak(userId, night)
+  if (cur.tonight) return cur
+  const count = cur.count + 1
+  const best = Math.max(cur.best, count)
+  await redis.hSet(`streak:${userId}`, {
+    last: String(night),
+    count: String(count),
+    best: String(best),
+  })
+  return {count, best, tonight: true}
 }

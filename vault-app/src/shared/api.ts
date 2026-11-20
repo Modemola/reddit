@@ -7,6 +7,9 @@ export type ErrorRsp = {error: string; status: number}
 /** How one player has done on one vault. */
 export type Progress = {tries: number; won: boolean; moves: number}
 
+/** Nights in a row with at least one crack. `tonight` is true once tonight already counts. */
+export type Streak = {count: number; best: number; tonight: boolean}
+
 /** Public numbers for one vault. `marks` maps tile index (y * 7 + x) to how many people were caught there. */
 export type VaultStats = {
   tries: number
@@ -35,6 +38,7 @@ export type InitRsp = {
   house: Record<string, VaultStats>
   mine: PlayerVault | null
   others: PlayerVault[]
+  streak: Streak
 }
 
 /** The client sends only its moves; the server replays them to decide what happened. */
@@ -44,6 +48,7 @@ export type AttemptRsp = {
   moves: number
   progress: Progress
   stats: VaultStats
+  streak: Streak
 }
 
 /** Post a run as a comment. The server replays `moves` and writes the text itself; `gif` is an optional data URL. */

@@ -164,6 +164,7 @@ function finish(n) {
   if (G.key === 'test') { G.over = n.status; music.sting(n.status === 'won' ? 'cracked' : 'caught'); overlay(n.status, n.status === 'won' ? 'CRACKED' : 'CAUGHT', n.status === 'won' ? `Your vault works. ${G.moves} moves; the best possible is ${G.best}.` : why(n.cause), G.label === 'Test run' ? 'Tap to go back to building' : 'Tap to go back to the job sheet'); return; }
   const prev = progress[G.key] || { tries: 0, won: false, moves: 0 };
   const tries = prev.tries + 1;
+  try { navigator.vibrate?.(n.status === 'caught' ? [70, 50, 70] : [20, 40, 20, 40, 60]); } catch {}
   if (n.status === 'caught') {
     sfx.alarm(); music.sting('caught'); G.over = 'caught';
     overlay('caught', 'CAUGHT', why(n.cause), 'Tap to try again');
@@ -315,7 +316,7 @@ function renderPlay() {
   if (G.key === 'test') { $('crowd').innerHTML = '<b>Test run.</b> Nothing here is saved.'; }
   else {
     const st = statsFor(G.key); for (const [i, c] of Object.entries(st.marks)) crowdMarks.set(Number(i), c);
-    $('crowd').innerHTML = crowdStatus !== 'live' ? crowdLine() : !st.people ? '<b>Nobody has tried this vault yet.</b> Your mistakes will be the first marks on the floor.' : `This vault has caught <b>${st.caught} ${st.caught === 1 ? 'thief' : 'thieves'}</b> and been cracked by <b>${st.cracked}</b>. Red marks show where people were caught.`;
+    $('crowd').innerHTML = crowdStatus !== 'live' ? crowdLine() : !st.people ? '<b>Nobody has tried it yet.</b> Your mistakes will be the first marks.' : `Caught <b>${st.caught}</b> · cracked by <b>${st.cracked}</b>. Red marks: where people got caught.`;
   }
   const pb = $('pebble'); pb.textContent = G.aim ? 'Cancel' : `Pebble ×${G.s?.peb ?? 0}`; pb.disabled = !G.s?.peb && !G.aim;
   pb.className = G.aim ? 'primary' : 'ghost';
@@ -327,7 +328,9 @@ function renderPlay() {
 function playHouse(i) { play(LEVELS[i], 'h' + (i + 1), `Vault ${i + 1} of ${LEVELS.length}`, i < LEVELS.length - 1 ? () => playHouse(i + 1) : null); }
 function renderHome() {
   const done = LEVELS.filter((_, i) => progress['h' + (i + 1)]?.won).length;
-  $('job-line').innerHTML = done === LEVELS.length ? '<b>All six cracked.</b> Now try the vaults other players built, or build your own.' : `<b>${done} of ${LEVELS.length}</b> house vaults cracked. Each one teaches a trick.`;
+  const st = INIT?.streak;
+  const streak = st?.count ? ` <b>${st.count}-night streak.</b>${st.tonight ? '' : ' Crack any vault tonight to keep it.'}` : '';
+  $('job-line').innerHTML = (done === LEVELS.length ? '<b>All six cracked.</b> Now try the vaults other players built, or build your own.' : `<b>${done} of ${LEVELS.length}</b> house vaults cracked. Each one teaches a trick.`) + streak;
   $('jobs').innerHTML = LEVELS.map((L, i) => `<button type="button" class="${progress['h' + (i + 1)]?.won ? 'done' : ''}" data-i="${i}" aria-label="${L.name}"><b>${i + 1}</b>${progress['h' + (i + 1)]?.won ? 'cracked' : progress['h' + (i + 1)]?.tries ? 'tried' : 'open'}</button>`).join('');
   $('jobs').querySelectorAll('button').forEach(b => b.onclick = () => { sfx.wake(); playHouse(+b.dataset.i); });
   const mine = INIT?.mine;
@@ -530,6 +533,39 @@ $('bboard').addEventListener('pointerup', e => {
   if (x >= 0 && y >= 0 && x < W7 && y < H9) tapTile(x, y);
 });
 $('vaultName').addEventListener('input', e => { B.d.name = e.target.value.slice(0, 24); saveDraft(); });
+// A random vault from tonight's parts: try a few, keep the trickiest one that can still be cracked.
+function surprise() {
+  const rnd = n => Math.floor(Math.random() * n);
+  const free = (d, x, y) => inside(x, y) && !(x === START[0] && y >= H9 - 2) && !(d.gem[0] === x && d.gem[1] === y) && !d.walls.some(w => w[0] === x && w[1] === y) && !d.guards.some(g => g.path.some(p => p[0] === x && p[1] === y)) && !d.cams.some(c => c.at[0] === x && c.at[1] === y);
+  let best = null, bestScore = -1;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const d = blankDraft(); d.name = B.d.name;
+    d.gem = [1 + rnd(5), 1 + rnd(3)];
+    for (let i = 0; i < PARTS.wall; i++) { const x = 1 + rnd(5), y = 2 + rnd(5); if (free(d, x, y)) d.walls.push([x, y]); }
+    for (let i = 0; i < PARTS.guard; i++) {
+      const horiz = Math.random() < 0.6, len = 2 + rnd(4);
+      let x = 1 + rnd(5), y = 1 + rnd(6); const path = [];
+      for (let k = 0; k < len && free(d, x, y); k++) { path.push([x, y]); horiz ? x++ : y++; }
+      if (path.length) d.guards.push({ path, see: Math.random() < 0.3 ? 3 : 2, face: ['U', 'R', 'D', 'L'][rnd(4)] });
+    }
+    for (let i = 0; i < PARTS.cam; i++) { const x = 1 + rnd(5), y = 1 + rnd(6); if (free(d, x, y)) d.cams.push({ at: [x, y], dirs: SWEEPS[rnd(SWEEPS.length)] }); }
+    for (let i = 0; i < PARTS.laser; i++) {
+      const left = Math.random() < 0.5, y = 1 + rnd(7), at = [left ? 0 : W7 - 1, y];
+      if (d.lasers.some(l => l.at[1] === y)) continue;
+      const [on, off] = RHYTHMS[rnd(RHYTHMS.length)];
+      d.lasers.push({ at, dir: left ? 'R' : 'L', on, off, wall: false });
+    }
+    const L = draftToLevel(d), sol = solve(parse(L));
+    if (!sol) continue;
+    const straight = Math.abs(START[0] - d.gem[0]) + Math.abs(START[1] - d.gem[1]);
+    const score = Math.min(sol.length - straight, 10) + d.guards.length + d.cams.length + d.lasers.length;
+    if (score > bestScore) { best = d; bestScore = score; }
+  }
+  if (!best) { toast('Couldn’t find a good layout this time. Try again.'); return; }
+  B.d = best; B.sel = null; B.routing = null; changed();
+  toast('Here’s a start. Tweak it until it’s nasty.');
+}
+$('b-surprise').onclick = () => surprise();
 $('b-clear').onclick = () => { const n = B.d.name; B.d = blankDraft(); B.d.name = n; B.sel = null; B.routing = null; changed(); };
 $('b-test').onclick = () => { if (B.verdict === 'ok') { sfx.wake(); play({ ...B.level, name: B.level.name }, 'test', 'Test run'); } };
 $('b-lock').onclick = async () => {
@@ -564,6 +600,13 @@ async function submitAttempt(key, moves) {
   try {
     const rsp = await api(Endpoint.Attempt, { key, moves });
     progress[key] = rsp.progress;
+    const was = INIT?.streak;
+    if (INIT) INIT.streak = rsp.streak;
+    if (rsp.result === 'won' && rsp.streak.tonight && !was?.tonight && G.over === 'won' && !$('overlay').hidden) {
+      const el = document.createElement('div'); el.className = 'small streak';
+      el.textContent = rsp.streak.count === 1 ? 'Night streak started. Crack a vault tomorrow to keep it going.' : `${rsp.streak.count}-night streak!`;
+      $('overlay').insertBefore(el, $('share-btn'));
+    }
     if (INIT) {
       if (INIT.house[key]) INIT.house[key] = rsp.stats;
       for (const v of [INIT.mine, ...INIT.others]) if (v && v.key === key) v.stats = rsp.stats;

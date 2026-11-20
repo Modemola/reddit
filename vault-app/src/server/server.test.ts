@@ -133,6 +133,7 @@ test('the server replays runs: a real crack counts, a bust leaves a mark, a half
   const sol = solve(parse(HOUSE[0]!))!
   const won = await post<AttemptRsp>(Endpoint.Attempt, {key: 'h1', moves: sol})
   assert.equal(won.json.result, 'won')
+  assert.deepEqual(won.json.streak, {count: 1, best: 1, tonight: true})
   assert.equal(won.json.progress.moves, sol.length)
   const bust = await post<AttemptRsp>(
     Endpoint.Attempt,
@@ -287,4 +288,31 @@ test('sharing a run: server-written text, the GIF attached, once per vault, with
     String(last.text),
     /^u\/tester got caught by a guard in The Lobby on move 2/,
   )
+})
+
+test('streaks: one per night, kept by a crack the next night, reset by a missed night', async () => {
+  const night = nightOf(Date.now())
+  // pretend the last crack was last night
+  h('streak:t2_dana').set('last', String(night - 1))
+  h('streak:t2_dana').set('count', '4')
+  h('streak:t2_dana').set('best', '4')
+  const before = await get<InitRsp>(Endpoint.Init, 't2_dana')
+  assert.deepEqual(before.streak, {count: 4, best: 4, tonight: false})
+  const sol = solve(parse(HOUSE[1]!))!
+  const won = await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: 'h2', moves: sol},
+    't2_dana',
+  )
+  assert.deepEqual(won.json.streak, {count: 5, best: 5, tonight: true})
+  const again = await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: 'h2', moves: sol},
+    't2_dana',
+  )
+  assert.equal(again.json.streak.count, 5)
+  // a gap of two nights resets it
+  h('streak:t2_eve').set('last', String(night - 2))
+  h('streak:t2_eve').set('count', '9')
+  assert.equal((await get<InitRsp>(Endpoint.Init, 't2_eve')).streak.count, 0)
 })

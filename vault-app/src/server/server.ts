@@ -33,8 +33,10 @@ import {
 } from '../shared/vault.ts'
 import {
   claimShare,
+  extendStreak,
   getProgress,
   getStats,
+  getStreak,
   getVault,
   nightOwners,
   recordAttempt,
@@ -126,11 +128,14 @@ async function playerVaults(night: number): Promise<PlayerVault[]> {
 async function routeInit(): Promise<InitRsp> {
   const night = tonight()
   const userId = context.userId ?? null
-  const [username, progress, house, vaults] = await Promise.all([
+  const [username, progress, house, vaults, streak] = await Promise.all([
     reddit.getCurrentUsername().catch(() => undefined),
     userId ? getProgress(userId) : Promise.resolve({}),
     Promise.all(HOUSE.map((_, i) => getStats(houseKey(i)))),
     playerVaults(night),
+    userId
+      ? getStreak(userId, night)
+      : Promise.resolve({count: 0, best: 0, tonight: false}),
   ])
   const houseStats: InitRsp['house'] = {}
   house.forEach((s, i) => {
@@ -145,6 +150,7 @@ async function routeInit(): Promise<InitRsp> {
     house: houseStats,
     mine: vaults.find(v => v.owner === userId) ?? null,
     others: vaults.filter(v => v.owner !== userId),
+    streak,
   }
 }
 
@@ -211,7 +217,18 @@ async function routeAttempt(
       !ownVault,
     )
   }
-  return {result, moves: used, progress, stats: await getStats(req.key)}
+  // cracking someone else's vault, or a house vault, keeps the nightly streak going
+  const streak =
+    result === 'won' && !ownVault
+      ? await extendStreak(userId, tonight())
+      : await getStreak(userId, tonight())
+  return {
+    result,
+    moves: used,
+    progress,
+    stats: await getStats(req.key),
+    streak,
+  }
 }
 
 async function routePublish(

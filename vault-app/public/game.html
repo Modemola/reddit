@@ -160,6 +160,10 @@
       font-weight: 600;
     }
     .board {
+      /* the whole board fits on short phones, with the controls still in view */
+      width: 100%;
+      max-width: min(100%, calc((100dvh - 250px) * 7 / 9));
+      margin-inline: auto;
       position: relative;
       border-radius: 12px;
       overflow: hidden;
@@ -538,6 +542,9 @@
     .coach[hidden] {
       display: none;
     }
+    .overlay .streak {
+      color: var(--guard);
+    }
     .overlay .share {
       pointer-events: auto;
       font-size: 0.9rem;
@@ -663,6 +670,9 @@
         >
         <div class="row">
           <button class="ghost" id="b-test" type="button">Test run</button>
+          <button class="ghost" id="b-surprise" type="button">
+            Surprise me
+          </button>
           <button class="ghost" id="b-clear" type="button">Clear</button>
           <button class="primary" id="b-lock" type="button" style="flex:1">
             Lock it in
