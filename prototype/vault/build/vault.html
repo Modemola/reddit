@@ -8,10 +8,12 @@
 :root {
   --night: #0f1116;      /* page */
   --panel: #171a22;      /* cards on the job sheet */
-  --floor: #2b3242;      /* floor tiles */
-  --floor2: #30384a;
-  --wall: #566079;       /* wall tops */
-  --wallside: #12151c;
+  --floor: #806247;      /* oak floorboards */
+  --floor2: #8a6b4e;
+  --grain: #5e4632;      /* plank seams and grain */
+  --wall: #6e3a2e;       /* brick wall tops */
+  --mortar: #2a1c18;
+  --wallside: #0d0908;
   --text: #eef0f4;
   --muted: #8b93a5;
   --you: #f6f3ea;        /* the thief */
@@ -103,6 +105,11 @@ button:disabled { opacity: 0.4; cursor: default; }
 .verdict.bad { color: var(--laser); }
 label.name { display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; color: var(--muted); }
 input#vaultName { font: 600 1.05rem var(--display); color: var(--text); background: #ffffff0d; border: 0; border-radius: 10px; padding: 12px 14px; user-select: text; -webkit-user-select: text; }
+.sheet { position: fixed; inset: 0; background: #07080cdd; display: flex; align-items: center; justify-content: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); z-index: 20; }
+.sheet-card { background: var(--panel); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; max-width: 340px; width: 100%; box-shadow: 0 30px 80px -20px #000; }
+.sheet-card h2 { font-size: 1.3rem; }
+.sheet-card img { width: 100%; border-radius: 8px; image-rendering: auto; background: var(--night); min-height: 120px; }
+.overlay .share { pointer-events: auto; font-size: 0.9rem; padding: 10px 16px; }
 @media (prefers-reduced-motion: reduce) { button { transition: none; } }
 </style>
 
@@ -169,6 +176,14 @@ input#vaultName { font: 600 1.05rem var(--display); color: var(--text); backgrou
   </main>
 
   <div class="toast" id="toast" role="status"></div>
+</div>
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-label="Your highlight">
+    <h2 id="sheet-title">Your highlight</h2>
+    <img id="sheet-img" alt="Your run, as an animated GIF">
+    <p class="sub" id="sheet-note"></p>
+    <div class="row"><button class="primary" id="sheet-save" type="button">Save GIF</button><button class="ghost" id="sheet-close" type="button">Close</button></div>
+  </div>
 </div>
 
 <script>
@@ -889,9 +904,93 @@ class MusicPlayer {
 
 return MusicPlayer;
 })();
+// A small animated GIF encoder (GIF89a, LZW), written for VAULT.
+// One 256-colour palette is built for the whole clip by median cut over sampled pixels,
+// so dark boards keep their tones; each pixel then maps to its nearest palette colour.
+const GIF = (() => {
+  function buildPalette(frames) {
+    const samples = [];
+    const step = Math.max(1, Math.floor(frames.reduce((n, f) => n + f.rgba.length / 4, 0) / 60000));
+    let k = 0;
+    for (const f of frames) for (let i = 0; i < f.rgba.length; i += 4) if (k++ % step === 0) samples.push([f.rgba[i], f.rgba[i + 1], f.rgba[i + 2]]);
+    let boxes = [samples];
+    while (boxes.length < 256) {
+      // split the box with the widest channel range
+      let bi = -1, best = -1, ch = 0;
+      boxes.forEach((bx, i) => {
+        if (bx.length < 2) return;
+        for (let c = 0; c < 3; c++) { let lo = 255, hi = 0; for (const p of bx) { if (p[c] < lo) lo = p[c]; if (p[c] > hi) hi = p[c]; } if (hi - lo > best) { best = hi - lo; bi = i; ch = c; } }
+      });
+      if (bi < 0 || best <= 0) break;
+      const bx = boxes[bi].sort((p, q) => p[ch] - q[ch]), mid = bx.length >> 1;
+      boxes.splice(bi, 1, bx.slice(0, mid), bx.slice(mid));
+    }
+    const pal = boxes.filter(bx => bx.length).map(bx => { const s = [0, 0, 0]; for (const p of bx) { s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; } return s.map(v => Math.round(v / bx.length)); });
+    while (pal.length < 256) pal.push([0, 0, 0]);
+    return pal;
+  }
+  function mapper(pal) {
+    const cache = new Int16Array(32768).fill(-1);
+    return (r, g, b) => {
+      const key = (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3);
+      let idx = cache[key];
+      if (idx < 0) { let bd = 1e9; for (let i = 0; i < pal.length; i++) { const dr = pal[i][0] - r, dg = pal[i][1] - g, db = pal[i][2] - b, d = dr * dr * 2 + dg * dg * 4 + db * db * 3; if (d < bd) { bd = d; idx = i; } } cache[key] = idx; }
+      return idx;
+    };
+  }
+  function indexFrame(rgba, near) {
+    const n = rgba.length / 4, out = new Uint8Array(n);
+    for (let i = 0; i < n; i++) out[i] = near(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]);
+    return out;
+  }
+
+  // LZW with 8-bit pixels: codes start at 9 bits and grow to 12, then the table is cleared.
+  function lzw(px) {
+    const MIN = 8, CLEAR = 1 << MIN, EOI = CLEAR + 1, out = [];
+    let size = MIN + 1, next = EOI + 1, acc = 0, bits = 0;
+    const dict = new Map();
+    const emit = c => { acc |= c << bits; bits += size; while (bits >= 8) { out.push(acc & 255); acc >>>= 8; bits -= 8; } };
+    emit(CLEAR);
+    let prefix = px[0];
+    for (let i = 1; i < px.length; i++) {
+      const k = px[i], key = prefix * 256 + k, hit = dict.get(key);
+      if (hit !== undefined) { prefix = hit; continue; }
+      emit(prefix);
+      if (next === 4096) { emit(CLEAR); dict.clear(); size = MIN + 1; next = EOI + 1; }
+      else { if (next >= (1 << size)) size++; dict.set(key, next++); }
+      prefix = k;
+    }
+    emit(prefix); emit(EOI);
+    if (bits > 0) out.push(acc & 255);
+    return out;
+  }
+
+  // frames: [{ rgba: Uint8ClampedArray, delay: ms }], all w x h. Returns a Uint8Array.
+  function encode(frames, w, h) {
+    const palette = buildPalette(frames), near = mapper(palette), b = [];
+    const u16 = v => b.push(v & 255, (v >> 8) & 255);
+    const str = s => { for (const ch of s) b.push(ch.charCodeAt(0)); };
+    str('GIF89a'); u16(w); u16(h); b.push(0xF7, 0, 0);
+    for (const [r, g, bl] of palette) b.push(r, g, bl);
+    b.push(0x21, 0xFF, 11); str('NETSCAPE2.0'); b.push(3, 1); u16(0); b.push(0); // loop forever
+    for (const f of frames) {
+      b.push(0x21, 0xF9, 4, 0x04); u16(Math.max(2, Math.round(f.delay / 10))); b.push(0, 0); // keep previous, delay in 1/100 s
+      b.push(0x2C); u16(0); u16(0); u16(w); u16(h); b.push(0);
+      b.push(8);
+      const data = lzw(indexFrame(f.rgba, near));
+      for (let i = 0; i < data.length; i += 255) { const chunk = data.slice(i, i + 255); b.push(chunk.length, ...chunk); }
+      b.push(0);
+    }
+    b.push(0x3B);
+    return new Uint8Array(b);
+  }
+  return { encode };
+})();
+
+
 const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const C = Object.fromEntries(['night', 'floor', 'floor2', 'wall', 'wallside', 'text', 'muted', 'you', 'gem', 'guard', 'laser', 'cam'].map(k => [k, css('--' + k)]));
+const C = Object.fromEntries(['night', 'floor', 'floor2', 'grain', 'mortar', 'wall', 'wallside', 'text', 'muted', 'you', 'gem', 'guard', 'laser', 'cam'].map(k => [k, css('--' + k)]));
 const EPOCH = Date.UTC(2026, 10, 19);
 const dayNo = Math.max(0, Math.floor((Date.now() - EPOCH) / 864e5));
 const DAY = 'd' + dayNo;
@@ -899,19 +998,70 @@ const W7 = 7, H9 = 9, START = [3, 8];
 
 // ---------- shared drawing ----------
 function painter(cv) {
-  const ctx = cv.getContext('2d'); let DPR = 1, T = 0;
+  const ctx = cv.getContext('2d'); let DPR = 1, T = 0, layer = null, layerSig = '', lightCv = null;
+  const rnd = (x, y, i) => { const n = Math.sin(x * 127.1 + y * 311.7 + i * 74.7) * 43758.5453; return n - Math.floor(n); };
+  function boards(L, x, y) {
+    // three oak planks per tile, joints staggered, a little grain
+    const X = x * T, Y = y * T, h = T / 3;
+    for (let i = 0; i < 3; i++) {
+      L.fillStyle = rnd(x, y, i) > 0.5 ? C.floor : C.floor2; L.fillRect(X, Y + i * h, T, h);
+      L.strokeStyle = C.grain; L.globalAlpha = 0.5; L.lineWidth = 1;
+      for (let g = 0; g < 2; g++) { const gy = Y + i * h + h * (0.3 + 0.4 * rnd(x, y, i * 3 + g)); L.beginPath(); L.moveTo(X + T * rnd(x, y, 9 + g), gy); L.lineTo(X + T * Math.min(1, rnd(x, y, 9 + g) + 0.45), gy + 0.5); L.stroke(); }
+      L.globalAlpha = 1; L.fillStyle = C.grain; L.fillRect(X, Y + (i + 1) * h - 1, T, 1);
+      const j = X + T * (((x * 3 + y * 7 + i * 5) % 4) / 4 + 0.12); L.fillRect(j, Y + i * h, 1, h);
+    }
+  }
+  function brick(L, x, y) {
+    const X = x * T, Y = y * T, top = T * 0.8;
+    L.fillStyle = C.wallside; L.fillRect(X, Y, T, T);
+    L.fillStyle = C.mortar; L.fillRect(X, Y, T, top);
+    const rows = 3, bh = top / rows;
+    for (let r = 0; r < rows; r++) {
+      const off = (r + y) % 2 ? T / 4 : 0;
+      for (let b = -1; b < 3; b++) {
+        const bx = X + off + b * T / 2 + 1, w = T / 2 - 2, x0 = Math.max(X + 1, bx), x1 = Math.min(X + T - 1, bx + w);
+        if (x1 <= x0) continue;
+        L.fillStyle = C.wall; L.globalAlpha = 0.82 + 0.18 * rnd(x * 4 + b, y * 3 + r, 1); L.fillRect(x0, Y + r * bh + 1, x1 - x0, bh - 2); L.globalAlpha = 1;
+      }
+    }
+  }
   const api = {
     ctx, get T() { return T; },
     size(V) { DPR = Math.min(devicePixelRatio || 1, 2.5); const w = cv.clientWidth || 400; T = w / V.w; cv.style.height = (T * V.h) + 'px'; cv.width = Math.round(w * DPR); cv.height = Math.round(T * V.h * DPR); },
     begin(V) { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = C.night; ctx.fillRect(0, 0, V.w * T, V.h * T); },
     c(x, y) { return [(x + 0.5) * T, (y + 0.5) * T]; },
     floor(V) {
-      for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
-        const k = x + ',' + y, dev = V.cams.some(c => c.at[0] === x && c.at[1] === y) || V.lasers.some(l => l.at[0] === x && l.at[1] === y);
-        if (V.walls.has(k) && !dev) { ctx.fillStyle = C.wallside; ctx.fillRect(x * T, y * T, T, T); ctx.fillStyle = C.wall; ctx.fillRect(x * T + 1, y * T + 1, T - 2, T * 0.78); }
-        else if (dev && V.lasers.some(l => l.at[0] === x && l.at[1] === y) && (x === 0 || y === 0 || x === V.w - 1 || y === V.h - 1 || isWallTile(V, x, y))) { ctx.fillStyle = C.wallside; ctx.fillRect(x * T, y * T, T, T); ctx.fillStyle = C.wall; ctx.fillRect(x * T + 1, y * T + 1, T - 2, T * 0.78); }
-        else { ctx.fillStyle = (x + y) % 2 ? C.floor : C.floor2; ctx.fillRect(x * T, y * T, T, T); }
+      // The floor and walls never change during a vault, so they are drawn once and reused.
+      const sig = V.w + 'x' + V.h + ':' + T + ':' + [...V.walls].join(';');
+      if (!layer || layerSig !== sig) {
+        layer = document.createElement('canvas'); layer.width = cv.width; layer.height = cv.height; layerSig = sig;
+        const L = layer.getContext('2d'); L.setTransform(DPR, 0, 0, DPR, 0, 0);
+        for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
+          const k = x + ',' + y, cam = V.cams.some(c => c.at[0] === x && c.at[1] === y), las = V.lasers.some(l => l.at[0] === x && l.at[1] === y);
+          const wall = (V.walls.has(k) && !cam && !las) || (las && (x === 0 || y === 0 || x === V.w - 1 || y === V.h - 1 || isWallTile(V, x, y)));
+          wall ? brick(L, x, y) : boards(L, x, y);
+        }
       }
+      ctx.drawImage(layer, 0, 0, V.w * T, V.h * T);
+    },
+    // Night over everything, with pools of light cut out where the light is.
+    light(V, sources) {
+      if (!lightCv || lightCv.width !== cv.width || lightCv.height !== cv.height) { lightCv = document.createElement('canvas'); lightCv.width = cv.width; lightCv.height = cv.height; }
+      const L = lightCv.getContext('2d'); L.setTransform(DPR, 0, 0, DPR, 0, 0); L.globalCompositeOperation = 'source-over';
+      L.clearRect(0, 0, V.w * T, V.h * T); L.fillStyle = 'rgba(7, 10, 26, 0.5)'; L.fillRect(0, 0, V.w * T, V.h * T);
+      L.globalCompositeOperation = 'destination-out';
+      for (const s of sources) { const [cx, cy] = api.c(s.x, s.y), R = s.r * T, g = L.createRadialGradient(cx, cy, 0, cx, cy, R); g.addColorStop(0, 'rgba(0,0,0,' + s.a + ')'); g.addColorStop(1, 'rgba(0,0,0,0)'); L.fillStyle = g; L.fillRect(cx - R, cy - R, 2 * R, 2 * R); }
+      ctx.drawImage(lightCv, 0, 0, V.w * T, V.h * T);
+      ctx.globalCompositeOperation = 'lighter';
+      for (const s of sources) if (s.tint) { const [cx, cy] = api.c(s.x, s.y), R = s.r * T * 0.9, g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R); g.addColorStop(0, s.tint); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R); }
+      ctx.globalCompositeOperation = 'source-over';
+    },
+    torch(gx, gy, f, now) {
+      // a small flame carried at the guard's side
+      const [cx, cy] = [(gx + 0.5) * T, (gy + 0.5) * T], [fx, fy] = DIRS[f], sx = cx + (-fy) * T * 0.3 + fx * T * 0.06, sy = cy + fx * T * 0.3 + fy * T * 0.06;
+      const fl = 1 + 0.18 * Math.sin(now / 70 + gx * 3) + 0.1 * Math.sin(now / 37 + gy);
+      ctx.fillStyle = '#ffdf8a'; ctx.beginPath(); ctx.ellipse(sx, sy, T * 0.07 * fl, T * 0.1 * fl, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(sx, sy + T * 0.02, T * 0.035, 0, 7); ctx.fill();
     },
     gem(V, now) {
       const [cx, cy] = api.c(...V.gem), r = T * 0.24 * (1 + 0.06 * Math.sin(now / 300));
@@ -970,11 +1120,11 @@ $('home-link').onkeydown = e => { if (e.key === 'Enter') show('home'); };
 
 // ---------- crack ----------
 const P = painter($('board'));
-const G = { drawn: {}, aim: false, barks: [], pebbleFx: null, L: null, key: '', label: '', next: null, V: null, s: null, prev: null, anim: 1, a0: 0, moves: 0, over: null, best: 0, owner: null };
+const G = { frames: [], lastCap: 0, endAt: 0, result: null, drawn: {}, aim: false, barks: [], pebbleFx: null, L: null, key: '', label: '', next: null, V: null, s: null, prev: null, anim: 1, a0: 0, moves: 0, over: null, best: 0, owner: null };
 let progress = {};
 function play(L, key, label, next, owner) {
   Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1 });
-  G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null;
+  G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
   G.best = (solve(G.V) || '').length;
   $('overlay').hidden = true; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
 }
@@ -990,7 +1140,7 @@ function move(m) {
   G.prev = G.s; G.s = n; G.moves++; G.a0 = now; G.anim = 0;
   music.setMood(n.status === 'caught' ? 'chase' : tension(n));
   if (n.status === 'caught' && n.by) { const gi = G.V.guards.findIndex(g => { const p = guardPos(g, n); return p[0] === n.by[0] && p[1] === n.by[1]; }); if (gi >= 0) bark(gi, 'alert', now); }
-  if (n.status !== 'play') { G.over = 'pending'; setTimeout(() => finish(n), n.status === 'caught' ? 900 : 350); }
+  if (n.status !== 'play') { G.endAt = now; G.result = { status: n.status, moves: G.moves, cause: n.cause }; G.over = 'pending'; setTimeout(() => finish(n), n.status === 'caught' ? 900 : 350); }
   renderPlay();
 }
 let bumpT = 0;
@@ -1008,7 +1158,11 @@ function finish(n) {
   progress[G.key] = rec; save(); renderPlay();
 }
 const why = c => ({ guard: 'A guard spotted you.', laser: 'You walked into a live laser.', camera: 'The camera caught you.' }[c] || 'You were caught.');
-function overlay(cls, h, p, sub) { const o = $('overlay'); o.className = 'overlay ' + cls; o.hidden = false; o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="small">${sub}</div>`; }
+function overlay(cls, h, p, sub) {
+  const o = $('overlay'); o.className = 'overlay ' + cls; o.hidden = false;
+  o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="small">${sub}</div>` + (G.frames.length > 2 ? `<button class="ghost share" type="button" id="share-btn">${cls === 'won' ? 'Make a GIF of this crack' : 'Make a GIF of this bust'}</button>` : '');
+  const sb = $('share-btn'); if (sb) sb.onclick = e => { e.stopPropagation(); makeGif(); };
+}
 $('overlay').onclick = () => {
   if (G.key === 'test') { show(G.label === 'Test run' ? 'build' : 'home'); return; }
   if (G.over === 'caught') restart();
@@ -1045,6 +1199,12 @@ function drawPlay(now) {
     ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r); ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r); ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  const lights = [{ x: V.gem[0], y: V.gem[1], r: 1.7, a: 0.9, tint: 'rgba(94,240,214,0.10)' }];
+  { const p = G.prev.pos, q = s.pos; lights.push({ x: lerp(p[0], q[0], k), y: lerp(p[1], q[1], k), r: 2, a: 0.75 }); }
+  for (const g of V.guards) if (!(s.ko & (1 << g.i))) { const a = guardPos(g, G.prev), b = guardPos(g, s), fl = 0.06 * Math.sin(now / 90 + g.i); lights.push({ x: lerp(a[0], b[0], k), y: lerp(a[1], b[1], k), r: 3 + fl, a: 0.95, tint: 'rgba(255,160,70,0.13)' }); }
+  for (const l of V.lasers) if (laserOn(l, t)) for (const p of l.beam) lights.push({ x: p[0], y: p[1], r: 0.9, a: 0.35, tint: 'rgba(255,60,80,0.05)' });
+  for (const c of V.cams) lights.push({ x: c.at[0], y: c.at[1], r: 1.1, a: 0.4, tint: 'rgba(140,180,255,0.06)' });
+  P.light(V, lights);
   P.gem(V, now);
   for (const l of V.lasers) P.laser(V, l, laserOn(l, t), laserOn(l, t + 1), now);
   for (const c of V.cams) P.cam(V, c, camDir(c, t), camDir(c, t + 1));
@@ -1054,7 +1214,7 @@ function drawPlay(now) {
     const gx = lerp(a[0], b[0], k), gy = lerp(a[1], b[1], k);
     G.drawn[g.i] = [gx, gy];
     P.cone([gx, gy], b[2], rayV(V, [b[0], b[1]], b[2], g.see).length, C.guard, 0.2 * k + 0.05);
-    P.guard(gx, gy, b[2]);
+    P.guard(gx, gy, b[2]); P.torch(gx, gy, b[2], now);
     if (s.gs[g.i][1] > 0 || s.gs[g.i][3]) { const [cx, cy] = P.c(gx, gy); ctx.fillStyle = C.guard; ctx.font = `700 ${T * 0.34}px ${css('--display')}`; ctx.textAlign = 'center'; ctx.fillText('?', cx + T * 0.28, cy - T * 0.2); }
     const n = guardPos(g, nextS); if (n[0] !== b[0] || n[1] !== b[1]) { const [cx, cy] = P.c(gx, gy), [nx, ny] = P.c(n[0], n[1]); ctx.strokeStyle = C.guard; ctx.globalAlpha = 0.55; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(lerp(cx, nx, 0.7), lerp(cy, ny, 0.7)); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; }
   }
@@ -1139,6 +1299,54 @@ function renderPlay() {
   const rec = progress[G.key];
   $('meta').innerHTML = `moves <b>${G.moves}</b> · best possible <b>${G.best}</b>` + (G.key !== 'test' ? ` · try <b>${(rec?.tries || 0) + (G.over ? 0 : 1)}</b>` : '');
 }
+
+// ---------- highlight GIF ----------
+// While something moves on the board, keep small copies of it (about 11 a second). Idle thinking time is skipped.
+const CAP_W = 216;
+function capture(now) {
+  const moving = G.anim < 1 || G.pebbleFx || G.barks.some(b => now >= b.t0) || (G.endAt && now - G.endAt < 1100);
+  const first = !G.frames.length;
+  if (!first && (!moving || now - G.lastCap < 90)) return;
+  if (G.endAt && now - G.endAt > 1100) return;
+  const cv = $('board'), h = Math.round(CAP_W * cv.height / cv.width);
+  const c = capture.c || (capture.c = document.createElement('canvas')); c.width = CAP_W; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(cv, 0, 0, CAP_W, h);
+  G.frames.push({ rgba: x.getImageData(0, 0, CAP_W, h).data, delay: first ? 700 : 90, h });
+  if (G.frames.length > 260) G.frames.splice(1, 1);
+  G.lastCap = now;
+}
+let gifUrl = null, gifBlob = null;
+function makeGif() {
+  if (G.frames.length < 3) return;
+  const fr = G.frames, w = CAP_W, h = fr[0].h, bar = 30, H = h + bar, res = G.result || { status: 'play', moves: G.moves };
+  const cap = res.status === 'won' ? `cracked in ${res.moves} move${res.moves === 1 ? '' : 's'}` : res.status === 'caught' ? `caught on move ${res.moves}` : `${res.moves} moves in`;
+  const text = `VAULT · ${G.L.name} · ${cap}`;
+  const c = document.createElement('canvas'); c.width = w; c.height = H; const x = c.getContext('2d', { willReadFrequently: true });
+  const frames = fr.map((f, i) => {
+    x.fillStyle = C.night; x.fillRect(0, 0, w, H);
+    x.putImageData(new ImageData(new Uint8ClampedArray(f.rgba), w, h), 0, 0);
+    x.fillStyle = res.status === 'caught' ? C.laser : C.gem; x.fillRect(0, h, w, 2);
+    x.fillStyle = C.text; x.font = `600 12px ${css('--body')}`; x.textAlign = 'center'; x.fillText(text, w / 2, h + 19, w - 12);
+    return { rgba: x.getImageData(0, 0, w, H).data, delay: i === fr.length - 1 ? 1600 : f.delay };
+  });
+  const bytes = GIF.encode(frames, w, H);
+  gifBlob = new Blob([bytes], { type: 'image/gif' });
+  if (gifUrl) URL.revokeObjectURL(gifUrl); gifUrl = URL.createObjectURL(gifBlob);
+  $('sheet-img').src = gifUrl;
+  $('sheet-title').textContent = res.status === 'won' ? 'Your crack' : 'Your bust';
+  $('sheet-note').textContent = `${Math.round(bytes.length / 1024)} KB, ${frames.length} frames. Save it and drop it in the comments.`;
+  $('sheet').hidden = false;
+  downloadsP.then(d => { $('sheet-save').hidden = !d; if (!d) $('sheet-note').textContent += ' Saving is not available in this view; press and hold the image to save it instead.'; });
+}
+const downloadsP = (async () => { try { return window.claude?.use ? await claude.use('downloads') : null; } catch { return null; } })();
+$('sheet-close').onclick = () => { $('sheet').hidden = true; };
+$('sheet').onclick = e => { if (e.target === $('sheet')) $('sheet').hidden = true; };
+$('sheet-save').onclick = async () => {
+  const d = await downloadsP; if (!d || !gifBlob) return;
+  const name = 'vault-' + G.L.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.gif';
+  try { await d.save({ filename: name, data: gifBlob }); toast('Saved.'); }
+  catch (e) { if (e?.code !== 'declined') toast('The GIF could not be saved here. Press and hold the image to save it instead.'); }
+};
 
 // ---------- home ----------
 function playHouse(i) { play(LEVELS[i], 'h' + (i + 1), `Vault ${i + 1} of ${LEVELS.length}`, i < LEVELS.length - 1 ? () => playHouse(i + 1) : null); }
@@ -1470,7 +1678,7 @@ renderSound();
 
 // ---------- loop ----------
 function frame(now) {
-  if (view === 'play' && G.V) { if (G.anim < 1) G.anim = Math.min(1, (now - G.a0) / 150); drawPlay(now); }
+  if (view === 'play' && G.V) { if (G.anim < 1) G.anim = Math.min(1, (now - G.a0) / 150); drawPlay(now); capture(now); }
   if (view === 'build') drawBuilder(now);
   requestAnimationFrame(frame);
 }
