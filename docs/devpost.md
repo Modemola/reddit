@@ -25,7 +25,7 @@ Most daily games are one puzzle for everyone, solved alone. We wanted a daily ga
 
 **Tonight’s job.** Six house vaults each teach one idea (timing, lasers, the pebble, long sight lines, cameras) and end in The Core, which uses all of them.
 
-**Build.** Everyone gets the same box of parts tonight, for example 8 walls, 2 guards and a camera. You place walls, draw guard routes, set laser rhythms and camera sweeps, and name your vault. A solver checks it live as you build: it won’t let you publish a vault nobody could crack, and it tells you when yours is “a straight walk” or “nasty”. One vault per player per night.
+**Build.** Everyone gets the same box of parts tonight, for example 8 walls, 2 guards and a camera. You place walls, draw guard routes, set laser rhythms and camera sweeps, and name your vault. A solver checks it live as you build: it won’t let you publish a vault nobody could crack, and it tells you when yours is “a straight walk” or “nasty”. Stuck on a blank page? **Surprise me** builds a random vault from tonight’s parts that the solver has already proven crackable, ready to tweak. One vault per player per night.
 
 **Then the subreddit plays it.** Your vault card shows how many thieves it caught and how many cracked it. Tonight’s list puts the deadliest vaults first. Red marks on the floor show where other people were caught, so every vault carries the history of everyone who tried it.
 
@@ -35,7 +35,7 @@ Most daily games are one puzzle for everyone, solved alone. We wanted a daily ga
 - The daily content is made by the community: every player’s vault is a puzzle for everyone else.
 - Shared traces: red marks show where people were caught, and the deadliest vaults rise to the top.
 - The comments become a highlight reel of cracks and busts, and a place to argue about whose vault is meanest.
-- A new post every night, automatically.
+- A new post every night, automatically, and a night streak for cracking at least one vault every night.
 
 ## Built for a first-time player
 A new player never sees a menu first: they land in the first vault, playing. One-line tips appear on the board at the moment they matter (how to move, what red corners mean, how to knock out a guard, when to throw the pebble), each shown once. The six house vaults then teach the rest.
@@ -44,7 +44,7 @@ A new player never sees a menu first: they land in the first vault, playing. One
 - **Devvit Web**, from Reddit’s bare template: a TypeScript server on Devvit’s Node runtime and a canvas client with no framework.
 - **One rules engine shared by client and server.** It is pure and deterministic, with a breadth-first solver that finds the fewest-moves crack (and proves a vault can be cracked at all).
 - **Fair play by design.** The client sends only its moves. The server replays them with the same engine to decide whether you cracked a vault or got caught, so nobody can fake a crack or pad a vault’s numbers. Player vaults are validated against tonight’s parts and re-solved on the server before they go live.
-- **Redis** stores progress, each vault’s caught and cracked counts, and catch marks per tile.
+- **Redis** stores progress, night streaks, each vault’s caught and cracked counts, and catch marks per tile.
 - **Scheduler** creates the nightly post; an install trigger creates the first one.
 - **Media upload and rich-text comments** post the GIF of your run.
 - **Art and sound made in code.** Oak floors, brick walls and torchlight are drawn procedurally; the night layer is cut by pools of light around each guard’s torch. The adaptive score (a D-minor creep that tightens when danger is next to you, with stings for cracked and caught) and the GIF encoder are written for the game, with no audio or image files. Fonts are bundled (SIL Open Font License).
