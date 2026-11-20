@@ -346,6 +346,7 @@ function renderHome() {
     $('mine').innerHTML = `<div class="sub">Tonight’s parts: <b>${partsLine()}</b>. Build a vault that catches people. You get one a night.</div><div class="row"><button class="primary" id="go-build" type="button">Build tonight’s vault</button></div>`;
     $('go-build').onclick = () => show('build');
   }
+  renderVaultOfTheNight();
   const list = (INIT?.others || []).slice().sort((a, b) => (b.stats.caught - b.stats.cracked * 3) - (a.stats.caught - a.stats.cracked * 3));
   $('others-line').innerHTML = crowdStatus !== 'live' ? crowdLine() : list.length ? 'Deadliest first. Each one was built by another player from tonight’s parts.' : 'Nobody else has built a vault tonight yet. Be the first, or check back later.';
   $('others').innerHTML = '';
@@ -358,6 +359,27 @@ function renderHome() {
     $('others').appendChild(btn);
   }
 }
+// The deadliest player vault tonight: most thieves caught, with every crack counting against it.
+function vaultOfTheNight() {
+  const all = [INIT?.mine, ...(INIT?.others || [])].filter(v => v && v.stats.caught > 0);
+  all.sort((a, b) => (b.stats.caught - b.stats.cracked * 3) - (a.stats.caught - a.stats.cracked * 3) || b.stats.caught - a.stats.caught);
+  return all[0] || null;
+}
+function renderVaultOfTheNight() {
+  const v = vaultOfTheNight(), sec = $('votn-section');
+  if (!v) { sec.hidden = true; return; }
+  sec.hidden = false;
+  const mine = v.owner === INIT.userId, r = progress[v.key];
+  $('votn').innerHTML = `<div class="n"></div><div class="sub"></div><div class="row"></div>`;
+  $('votn').querySelector('.n').textContent = v.name;
+  $('votn').querySelector('.sub').innerHTML = `${mine ? 'Yours.' : `By u/${escapeHtml(v.author || 'someone')}.`} Caught <b>${v.stats.caught}</b> ${v.stats.caught === 1 ? 'thief' : 'thieves'}, cracked by <b>${v.stats.cracked}</b>.`;
+  const btn = document.createElement('button'); btn.type = 'button';
+  btn.className = mine ? 'ghost' : 'primary';
+  btn.textContent = mine ? 'Play your vault' : r?.won ? 'You cracked it. Play again' : 'Try to crack it';
+  btn.onclick = () => { sfx.wake(); mine ? play(v.level, 'test', 'Your vault') : play(v.level, v.key, `By u/${v.author || 'someone'}`, null, v.owner); };
+  $('votn').querySelector('.row').appendChild(btn);
+}
+const escapeHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function crowdLine() { return crowdStatus === 'off' ? 'Tonight’s board could not be loaded. Check your connection and reopen the post.' : 'Loading tonight’s board…'; }
 
 // ---------- builder ----------
@@ -466,6 +488,11 @@ function check() {
 }
 function openBuilder() {
   if (!B.d) B.d = loadDraft();
+  const tip = $('b-tip');
+  if (!tipsSeen.builder) {
+    tip.innerHTML = 'Not sure where to start? Tap <strong>Surprise me</strong> for a layout from tonight’s parts, then make it meaner. Thieves carry one <strong>pebble</strong>, and the checker counts it, so a guard alone in a corridor won’t stop anyone.';
+    tip.hidden = false; tipsSeen.builder = 1; try { localStorage.setItem('vault:tips', JSON.stringify(tipsSeen)); } catch {}
+  } else tip.hidden = true;
   $('vaultName').value = B.d.name || '';
   BP.size({ w: W7, h: H9 }); renderBuilder(); check();
 }
@@ -602,6 +629,15 @@ async function submitAttempt(key, moves) {
     progress[key] = rsp.progress;
     const was = INIT?.streak;
     if (INIT) INIT.streak = rsp.streak;
+    if (rsp.rank && G.over === 'won' && !$('overlay').hidden) {
+      const { others, slower } = rsp.rank, el = document.createElement('div'); el.className = 'small rank';
+      const them = `${others} other ${others === 1 ? 'thief' : 'thieves'}`;
+      el.textContent = others === 0 ? 'First to crack it!'
+        : slower > 0 ? `Fewer moves than ${Math.round(100 * slower / others)}% of the ${them} who cracked it.`
+        : rsp.moves <= G.best ? `Tied for the fewest moves with ${them}.`
+        : `${others === 1 ? 'The other thief' : `All ${them}`} who cracked it used fewer or as many moves. A perfect run takes ${G.best}.`;
+      $('overlay').insertBefore(el, $('share-btn'));
+    }
     if (rsp.result === 'won' && rsp.streak.tonight && !was?.tonight && G.over === 'won' && !$('overlay').hidden) {
       const el = document.createElement('div'); el.className = 'small streak';
       el.textContent = rsp.streak.count === 1 ? 'Night streak started. Crack a vault tomorrow to keep it going.' : `${rsp.streak.count}-night streak!`;

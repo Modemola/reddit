@@ -316,3 +316,34 @@ test('streaks: one per night, kept by a crack the next night, reset by a missed 
   h('streak:t2_eve').set('count', '9')
   assert.equal((await get<InitRsp>(Endpoint.Init, 't2_eve')).streak.count, 0)
 })
+
+test('a crack is ranked against everyone else who cracked the vault', async () => {
+  const V = parse(HOUSE[0]!)
+  const fast = solve(V)! // 8 moves, with the pebble
+  const slow = solve(V, {usePebbles: false})! // 10 moves
+  assert.ok(slow.length > fast.length)
+  const first = await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: 'h1', moves: slow},
+    't2_r1',
+  )
+  assert.deepEqual(first.json.rank, {others: 0, slower: 0})
+  const second = await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: 'h1', moves: fast},
+    't2_r2',
+  )
+  assert.deepEqual(second.json.rank, {others: 1, slower: 1})
+  const third = await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: 'h1', moves: slow},
+    't2_r3',
+  )
+  assert.deepEqual(third.json.rank, {others: 2, slower: 0})
+  const bust = await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: 'h1', moves: ['U', 'U']},
+    't2_r4',
+  )
+  assert.equal(bust.json.rank, undefined)
+})

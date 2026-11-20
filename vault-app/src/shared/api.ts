@@ -49,7 +49,12 @@ export type AttemptRsp = {
   progress: Progress
   stats: VaultStats
   streak: Streak
+  /** After a crack: how this run compares with everyone else who cracked the vault. */
+  rank?: Rank
 }
+
+/** `others` is how many other people cracked it; `slower` how many of them took more moves than this run. */
+export type Rank = {others: number; slower: number}
 
 /** Post a run as a comment. The server replays `moves` and writes the text itself; `gif` is an optional data URL. */
 export type ShareReq = {key: string; moves: Move[]; gif?: string}

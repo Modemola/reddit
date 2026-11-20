@@ -542,6 +542,30 @@
     .coach[hidden] {
       display: none;
     }
+    .votn {
+      box-shadow:
+        inset 0 0 0 1px #ffb54766,
+        0 18px 40px -24px #ffb54755;
+    }
+    .votn .n {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 1.35rem;
+    }
+    .tipcard {
+      font-size: 0.88rem;
+      line-height: 1.45;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #5ef0d614;
+      box-shadow: inset 0 0 0 1px #5ef0d655;
+    }
+    .tipcard strong {
+      color: var(--gem);
+    }
+    .overlay .rank {
+      color: var(--text);
+    }
     .overlay .streak {
       color: var(--guard);
     }
@@ -583,6 +607,10 @@
 
       <!-- HOME -->
       <main id="v-home" class="app" style="gap:16px">
+        <section class="section" id="votn-section" hidden>
+          <h2>Vault of the night</h2>
+          <div class="card votn" id="votn"></div>
+        </section>
         <section class="section">
           <h2>Tonight’s job</h2>
           <div class="card">
@@ -651,6 +679,7 @@
           people. It has to be possible to crack, and the checker below tells
           you as you build.
         </p>
+        <div class="tipcard" id="b-tip" hidden></div>
         <div class="parts" id="parts"></div>
         <div class="board">
           <canvas

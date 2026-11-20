@@ -29,6 +29,8 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 
 - The community makes the daily content: every player’s vault is a puzzle for everyone else.
 - Red marks on the floor show where other people were caught.
+- After a crack you see how you did against everyone else who cracked it (“Fewer moves than 70% of the 12 other thieves…”).
+- **Vault of the night**: the deadliest player vault (most thieves caught, every crack counting against it) is featured on the job sheet and the feed card.
 - Deadliest vaults rise to the top of tonight’s list.
 - A new post goes up every night automatically.
 - Night streaks: crack at least one vault every night to keep yours going (your own vault doesn’t count).

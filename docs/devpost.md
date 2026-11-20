@@ -27,7 +27,7 @@ Most daily games are one puzzle for everyone, solved alone. We wanted a daily ga
 
 **Build.** Everyone gets the same box of parts tonight, for example 8 walls, 2 guards and a camera. You place walls, draw guard routes, set laser rhythms and camera sweeps, and name your vault. A solver checks it live as you build: it won’t let you publish a vault nobody could crack, and it tells you when yours is “a straight walk” or “nasty”. Stuck on a blank page? **Surprise me** builds a random vault from tonight’s parts that the solver has already proven crackable, ready to tweak. One vault per player per night.
 
-**Then the subreddit plays it.** Your vault card shows how many thieves it caught and how many cracked it. Tonight’s list puts the deadliest vaults first. Red marks on the floor show where other people were caught, so every vault carries the history of everyone who tried it.
+**Then the subreddit plays it.** Your vault card shows how many thieves it caught and how many cracked it. Tonight’s list puts the deadliest vaults first, and the deadliest of all becomes **Vault of the night**, featured on the job sheet and on the post’s feed card. When you crack someone’s vault you see how you did against everyone else who cracked it, for example “Fewer moves than 70% of the 12 other thieves who cracked it.” Red marks on the floor show where other people were caught, so every vault carries the history of everyone who tried it.
 
 **Share the moment.** After a crack or a bust, one tap posts the run to the comments as a looping GIF, captioned by the server, for example: “VAULT, Night 2: I cracked The Core in 12 moves (a perfect run).”
 

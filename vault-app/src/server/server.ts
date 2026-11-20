@@ -39,6 +39,7 @@ import {
   getStreak,
   getVault,
   nightOwners,
+  rankCrack,
   recordAttempt,
   releaseShare,
   saveVault,
@@ -222,12 +223,17 @@ async function routeAttempt(
     result === 'won' && !ownVault
       ? await extendStreak(userId, tonight())
       : await getStreak(userId, tonight())
+  const rank =
+    result === 'won' && !ownVault
+      ? await rankCrack(userId, req.key, used)
+      : undefined
   return {
     result,
     moves: used,
     progress,
     stats: await getStats(req.key),
     streak,
+    ...(rank ? {rank} : {}),
   }
 }
 

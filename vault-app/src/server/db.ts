@@ -6,7 +6,13 @@
 //   marks:{key}        hash  tile index -> count                         where people were caught
 //   prog:{userId}      hash  key -> Progress (JSON)                      one player's record
 import {redis} from '@devvit/web/server'
-import type {PlayerVault, Progress, Streak, VaultStats} from '../shared/api.ts'
+import type {
+  PlayerVault,
+  Progress,
+  Rank,
+  Streak,
+  VaultStats,
+} from '../shared/api.ts'
 import type {Level} from '../shared/engine.ts'
 
 export async function getStats(key: string): Promise<VaultStats> {
@@ -169,4 +175,19 @@ export async function extendStreak(
     best: String(best),
   })
   return {count, best, tonight: true}
+}
+
+/** Remembers each cracker's fewest moves on a vault, and ranks a run against the others. */
+export async function rankCrack(
+  userId: string,
+  key: string,
+  moves: number,
+): Promise<Rank> {
+  const all = await redis.hGetAll(`best:${key}`)
+  const mine = Number(all[userId] ?? Number.POSITIVE_INFINITY)
+  if (moves < mine) await redis.hSet(`best:${key}`, {[userId]: String(moves)})
+  const others = Object.entries(all)
+    .filter(([u]) => u !== userId)
+    .map(([, v]) => Number(v))
+  return {others: others.length, slower: others.filter(v => v > moves).length}
 }

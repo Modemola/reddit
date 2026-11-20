@@ -1,5 +1,5 @@
 import {requestExpandedMode} from '@devvit/web/client'
-import {Endpoint, type InitRsp} from '../shared/api.ts'
+import {Endpoint, type InitRsp, type PlayerVault} from '../shared/api.ts'
 import {nightOf} from '../shared/vault.ts'
 
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement
@@ -28,6 +28,17 @@ async function loadStats(): Promise<void> {
     if (caught)
       parts.push(`${caught} ${caught === 1 ? 'thief' : 'thieves'} caught`)
     statsEl.textContent = parts.join(' · ')
+    // the deadliest player vault tonight, if any has caught someone
+    const deadliness = (v: PlayerVault) => v.stats.caught - v.stats.cracked * 3
+    const top = [init.mine, ...init.others]
+      .filter((v): v is PlayerVault => v !== null && v.stats.caught > 0)
+      .sort((a, b) => deadliness(b) - deadliness(a))[0]
+    if (top) {
+      const line = document.createElement('div')
+      line.className = 'votn'
+      line.textContent = `Vault of the night: ${top.name} by u/${top.author || 'someone'}, caught ${top.stats.caught}`
+      statsEl.after(line)
+    }
   } catch {
     // the splash works without numbers
   }
