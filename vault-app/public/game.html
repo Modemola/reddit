@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    >
+    <link rel="modulepreload" href="game.js">
+    <title>VAULT</title>
+    <style>
+    @font-face {
+      font-family: 'Chakra Petch';
+      font-weight: 500;
+      font-display: swap;
+      src: url(fonts/chakra-petch-latin-500-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'Chakra Petch';
+      font-weight: 700;
+      font-display: swap;
+      src: url(fonts/chakra-petch-latin-700-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-weight: 400;
+      font-display: swap;
+      src: url(fonts/inter-latin-400-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-weight: 500;
+      font-display: swap;
+      src: url(fonts/inter-latin-500-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-weight: 600;
+      font-display: swap;
+      src: url(fonts/inter-latin-600-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'DM Mono';
+      font-weight: 400;
+      font-display: swap;
+      src: url(fonts/dm-mono-latin-400-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'DM Mono';
+      font-weight: 500;
+      font-display: swap;
+      src: url(fonts/dm-mono-latin-500-normal.woff2) format('woff2');
+    }
+    /* Layout: a floor plan under a desk lamp. The board is the hero; a thin job sheet runs above and below it. One committed night palette. */
+    :root {
+      --night: #0f1116; /* page */
+      --panel: #171a22; /* cards on the job sheet */
+      --floor: #806247; /* oak floorboards */
+      --floor2: #8a6b4e;
+      --grain: #5e4632; /* plank seams and grain */
+      --wall: #6e3a2e; /* brick wall tops */
+      --mortar: #2a1c18;
+      --wallside: #0d0908;
+      --text: #eef0f4;
+      --muted: #8b93a5;
+      --you: #f6f3ea; /* the thief */
+      --gem: #5ef0d6; /* the prize */
+      --guard: #ffb547; /* guards and their torches */
+      --laser: #ff4d5e;
+      --cam: #8fb3ff;
+      --display: 'Chakra Petch', 'Inter', system-ui, sans-serif;
+      --body: 'Inter', system-ui, -apple-system, sans-serif;
+      --mono: 'DM Mono', ui-monospace, Menlo, monospace;
+      color-scheme: dark;
+    }
+    html,
+    body {
+      height: 100%;
+    }
+    [hidden],
+    .app[hidden],
+    .overlay[hidden] {
+      display: none;
+    }
+    body {
+      background: var(--night);
+      color: var(--text);
+      font-family: var(--body);
+      padding-left: max(16px, env(safe-area-inset-left, 0px));
+      padding-right: max(16px, env(safe-area-inset-right, 0px));
+      padding-block: 12px 24px;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .app {
+      max-width: 460px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .mark {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 1.4rem;
+      letter-spacing: 0.22em;
+      cursor: pointer;
+      background: none;
+      padding: 0;
+      border-radius: 4px;
+      color: var(--text);
+    }
+    .mark span {
+      color: var(--gem);
+    }
+    .night {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      font-family: var(--display);
+      font-weight: 700;
+    }
+    .vname {
+      font-size: 1.7rem;
+      line-height: 1.05;
+    }
+    .title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .vno {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .crowd,
+    .sub {
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .crowd b,
+    .sub b {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .board {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow:
+        0 24px 60px -30px #000,
+        0 0 0 1px #ffffff10;
+    }
+    canvas.cv {
+      display: block;
+      width: 100%;
+      touch-action: none;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-align: center;
+      padding: 20px;
+      background: #0f1116c4;
+      backdrop-filter: blur(2px);
+      cursor: pointer;
+    }
+    .overlay h2 {
+      font-size: 2rem;
+      letter-spacing: 0.04em;
+    }
+    .overlay p {
+      margin: 0;
+      line-height: 1.45;
+      max-width: 30ch;
+    }
+    .overlay .small {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .caught h2 {
+      color: var(--laser);
+    }
+    .won h2 {
+      color: var(--gem);
+    }
+    .bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .meta {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .meta b {
+      color: var(--text);
+      font-weight: 500;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .legend span::before {
+      content: '';
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      margin-right: 6px;
+      vertical-align: -1px;
+      background: var(--c);
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      font: 600 1rem var(--body);
+      border-radius: 10px;
+      padding: 12px 18px;
+      border: 0;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+      color: var(--text);
+    }
+    button:active {
+      transform: scale(0.97);
+    }
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--gem);
+      outline-offset: 3px;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    .primary {
+      background: var(--gem);
+      color: #04211c;
+    }
+    .ghost {
+      background: #ffffff10;
+    }
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0;
+    }
+    .hint b {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .toast {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--gem);
+      min-height: 1.2em;
+    }
+
+    /* home */
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .section h2 {
+      font-size: 0.8rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-weight: 500;
+    }
+    .card {
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: inset 0 0 0 1px #ffffff0c;
+    }
+    .jobs {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+    }
+    .jobs button {
+      padding: 10px 0;
+      font: 500 0.8rem var(--mono);
+      background: #ffffff0d;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .jobs button.done {
+      background: #5ef0d61f;
+      color: var(--gem);
+    }
+    .jobs button b {
+      font: 700 1.1rem var(--display);
+    }
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .vrow {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2px 12px;
+      align-items: center;
+      text-align: left;
+      background: #ffffff0a;
+      padding: 12px 14px;
+      border-radius: 10px;
+    }
+    .vrow .n {
+      font: 700 1.05rem var(--display);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .vrow .s {
+      font: 400 0.75rem var(--mono);
+      color: var(--muted);
+      grid-column: 1;
+    }
+    .vrow .tag {
+      grid-row: 1 / span 2;
+      grid-column: 2;
+      font: 500 0.75rem var(--mono);
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: #ffffff10;
+      color: var(--muted);
+    }
+    .vrow .tag.ok {
+      background: #5ef0d61f;
+      color: var(--gem);
+    }
+    .vrow .tag.no {
+      background: #ff4d5e1f;
+      color: var(--laser);
+    }
+    .big {
+      font: 700 2.6rem var(--display);
+      line-height: 1;
+      color: var(--guard);
+      font-variant-numeric: tabular-nums;
+    }
+    .statrow {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .stat .v {
+      font: 500 1.3rem var(--mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat .l {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    /* builder */
+    .parts {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .parts button {
+      padding: 9px 6px;
+      font: 500 0.82rem var(--body);
+      background: #ffffff0d;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .parts button .c {
+      font: 400 0.72rem var(--mono);
+      color: var(--muted);
+    }
+    .parts button.on {
+      background: var(--text);
+      color: var(--night);
+    }
+    .parts button.on .c {
+      color: #0f111699;
+    }
+    .parts button i {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      display: inline-block;
+      background: var(--c);
+      margin-right: 5px;
+    }
+    .inspect {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-height: 2.4rem;
+    }
+    .chip {
+      padding: 8px 12px;
+      font: 500 0.82rem var(--body);
+      border-radius: 999px;
+      background: #ffffff10;
+    }
+    .chip.on {
+      background: var(--text);
+      color: var(--night);
+    }
+    .verdict {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      line-height: 1.45;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #ffffff0a;
+    }
+    .verdict.ok {
+      color: var(--gem);
+    }
+    .verdict.bad {
+      color: var(--laser);
+    }
+    label.name {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    input#vaultName {
+      font: 600 1.05rem var(--display);
+      color: var(--text);
+      background: #ffffff0d;
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 14px;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    .sheet {
+      position: fixed;
+      inset: 0;
+      background: #07080cdd;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: max(16px, env(safe-area-inset-top, 0px))
+        max(16px, env(safe-area-inset-right, 0px))
+        max(16px, env(safe-area-inset-bottom, 0px))
+        max(16px, env(safe-area-inset-left, 0px));
+      z-index: 20;
+    }
+    .sheet-card {
+      background: var(--panel);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 340px;
+      width: 100%;
+      box-shadow: 0 30px 80px -20px #000;
+    }
+    .sheet-card h2 {
+      font-size: 1.3rem;
+    }
+    .sheet-card img {
+      width: 100%;
+      border-radius: 8px;
+      image-rendering: auto;
+      background: var(--night);
+      min-height: 120px;
+    }
+    .overlay .share {
+      pointer-events: auto;
+      font-size: 0.9rem;
+      padding: 10px 16px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      button {
+        transition: none;
+      }
+    }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <button
+          class="mark"
+          id="home-link"
+          type="button"
+          aria-label="Back to tonight’s job"
+        >
+          VAU<span>L</span>T
+        </button>
+        <div class="row" style="align-items:center;gap:12px">
+          <div class="night" id="night"></div>
+          <button
+            class="ghost"
+            id="snd"
+            type="button"
+            style="padding:8px 12px;font-size:0.8rem"
+          >
+            Sound on
+          </button>
+        </div>
+      </header>
+
+      <!-- HOME -->
+      <main id="v-home" class="app" style="gap:16px">
+        <section class="section">
+          <h2>Tonight’s job</h2>
+          <div class="card">
+            <div class="sub" id="job-line"></div>
+            <div class="jobs" id="jobs"></div>
+          </div>
+        </section>
+        <section class="section">
+          <h2>Your vault</h2>
+          <div class="card" id="mine"></div>
+        </section>
+        <section class="section">
+          <h2>Vaults built today</h2>
+          <div class="sub" id="others-line"></div>
+          <div class="list" id="others"></div>
+        </section>
+      </main>
+
+      <!-- PLAY -->
+      <main id="v-play" class="app" hidden>
+        <div class="title">
+          <div class="vname" id="vname"></div>
+          <div class="vno" id="vno"></div>
+        </div>
+        <div class="crowd" id="crowd"></div>
+        <div class="board">
+          <canvas
+            class="cv"
+            id="board"
+            aria-label="Vault floor plan. Swipe or use the arrow keys to move one tile. Tap yourself or press space to wait."
+          ></canvas>
+          <div class="overlay" id="overlay" hidden></div>
+        </div>
+        <div class="bar">
+          <div class="meta" id="meta"></div>
+          <div class="row">
+            <button class="ghost" id="restart" type="button">Restart</button
+            ><button class="ghost" id="pebble" type="button">Pebble</button
+            ><button class="ghost" id="wait" type="button">Wait</button>
+          </div>
+        </div>
+        <div class="legend">
+          <span style="--c: var(--guard)">guard</span
+          ><span style="--c: var(--laser)">laser, on and off</span
+          ><span style="--c: var(--cam)">camera, turns each move</span>
+        </div>
+        <p class="hint">
+          <b>Swipe</b>
+          or tap a tile next to you to move. Everything moves after you do. Red
+          corners mark tiles that will be watched after your next move. Sneak
+          into a guard <b>from behind</b> to knock them out. You carry one
+          <b>pebble</b>: throw it and guards within 3 tiles turn to look at the
+          noise for two turns.
+        </p>
+      </main>
+
+      <!-- BUILD -->
+      <main id="v-build" class="app" hidden>
+        <div class="title">
+          <div class="vname">Build your vault</div>
+          <div class="vno" id="b-night"></div>
+        </div>
+        <p class="sub">
+          Everyone gets the same box of parts tonight. Make a vault that catches
+          people. It has to be possible to crack, and the checker below tells
+          you as you build.
+        </p>
+        <div class="parts" id="parts"></div>
+        <div class="board">
+          <canvas
+            class="cv"
+            id="bboard"
+            aria-label="Vault builder. Tap a tile to place the selected part."
+          ></canvas>
+        </div>
+        <div class="inspect" id="inspect"></div>
+        <div class="verdict" id="verdict" role="status"></div>
+        <label class="name"
+          >Vault name<input
+            id="vaultName"
+            maxlength="24"
+            autocomplete="off"
+          ></label
+        >
+        <div class="row">
+          <button class="ghost" id="b-test" type="button">Test run</button>
+          <button class="ghost" id="b-clear" type="button">Clear</button>
+          <button class="primary" id="b-lock" type="button" style="flex:1">
+            Lock it in
+          </button>
+        </div>
+        <p class="hint">
+          Thieves carry one pebble that turns nearby guards for two turns. The
+          checker counts it, so plan for it.
+        </p>
+        <p class="hint">
+          Locking in publishes your vault for everyone tonight. You can’t change
+          it after that.
+        </p>
+      </main>
+
+      <div class="toast" id="toast" role="status"></div>
+    </div>
+    <script type="module" src="game.js"></script>
+  </body>
+</html>
