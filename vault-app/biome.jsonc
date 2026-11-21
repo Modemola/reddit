@@ -39,7 +39,11 @@
         "noMisusedPromises": "error",
         "recommended": true
       },
-      "style": {"noInferrableTypes": "off"},
+      "style": {
+        "noInferrableTypes": "off",
+        // hand-written page CSS is ordered by component, not by specificity
+        "noDescendingSpecificity": "off"
+      },
       "suspicious": {"noImplicitAnyLet": "off"}
     }
   },

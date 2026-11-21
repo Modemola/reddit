@@ -457,7 +457,8 @@
       min-height: 2.4rem;
     }
     .chip {
-      padding: 8px 12px;
+      min-height: 40px;
+      padding: 8px 14px;
       font: 500 0.82rem var(--body);
       border-radius: 999px;
       background: #ffffff10;
@@ -467,12 +468,53 @@
       color: var(--night);
     }
     .verdict {
+      display: grid;
+      gap: 8px;
       font-family: var(--mono);
       font-size: 0.85rem;
       line-height: 1.45;
       padding: 10px 12px;
       border-radius: 10px;
       background: #ffffff0a;
+    }
+    /* a four-step meter: straight walk, easy, a real puzzle, nasty */
+    .meter {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+    }
+    .meter i {
+      height: 6px;
+      border-radius: 3px;
+      background: #ffffff14;
+      transition:
+        background-color 0.3s ease,
+        box-shadow 0.3s ease;
+    }
+    .meter[data-level='1'] i:nth-child(-n + 1),
+    .meter[data-level='2'] i:nth-child(-n + 2),
+    .meter[data-level='3'] i:nth-child(-n + 3),
+    .meter[data-level='4'] i:nth-child(-n + 4) {
+      background: var(--gem);
+      box-shadow: 0 0 10px -2px var(--gem);
+    }
+    .meter[data-level='4'] i {
+      background: var(--guard);
+      box-shadow: 0 0 10px -2px var(--guard);
+    }
+    .meter[data-level='0'] i {
+      background: #ff4d5e55;
+    }
+    .vtext b {
+      font-weight: 500;
+    }
+    @keyframes nudge {
+      40% {
+        transform: scale(1.02);
+      }
+    }
+    .verdict.changed {
+      animation: nudge 0.35s ease;
     }
     .verdict.ok {
       color: var(--gem);
@@ -550,6 +592,38 @@
     }
     .coach[hidden] {
       display: none;
+    }
+    .vrow.thumbed {
+      grid-template-columns: auto 1fr auto;
+    }
+    .vrow.thumbed .thumb {
+      grid-row: 1 / span 2;
+      grid-column: 1;
+    }
+    .vrow.thumbed .n,
+    .vrow.thumbed .s {
+      grid-column: 2;
+    }
+    .vrow.thumbed .tag {
+      grid-column: 3;
+    }
+    .thumb {
+      display: block;
+      border-radius: 5px;
+      box-shadow: 0 0 0 1px #ffffff14;
+    }
+    .jobs .thumb {
+      margin-bottom: 4px;
+      opacity: 0.85;
+    }
+    .jobs button.done .thumb {
+      opacity: 1;
+    }
+    .votn .thumbrow {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 12px;
+      align-items: center;
     }
     .vrow-wrap {
       display: grid;
@@ -689,7 +763,8 @@
       }
     }
     /* wide screens (Reddit's expanded view on a computer): the board on the left, everything else beside it */
-    @media (min-width: 860px) {
+    @media (min-width: 860px),
+      (orientation: landscape) and (min-width: 600px) and (max-height: 560px) {
       body > .app {
         max-width: 980px;
       }
@@ -718,6 +793,7 @@
         grid-row: 1 / span 12;
         max-width: min(100%, calc((100dvh - 120px) * 7 / 9));
         margin: 0 auto;
+        align-self: start;
       }
       #v-play > :not(.board),
       #v-build > :not(.board) {

@@ -14,7 +14,7 @@ const W7 = W, H9 = H;
 const LEVELS = HOUSE;
 
 // ---------- shared drawing ----------
-const FONT = { display: css('--display'), body: css('--body') };
+const FONT = { display: css('--display'), body: css('--body'), mono: css('--mono') };
 const ANG = { R: 0, D: Math.PI / 2, L: Math.PI, U: -Math.PI / 2 };
 function painter(cv) {
   const ctx = cv.getContext('2d'); let DPR = 1, T = 0, layer = null, layerSig = '', lightCv = null, tintCv = null;
@@ -258,7 +258,7 @@ function move(m) {
   if (n.knocked >= 0) { const [gx, gy] = guardPos(G.V.guards[n.knocked], G.s); burst(gx, gy, ['#ffd27a', '#fff3c4'], 14, 2.6, 520); FX.shake = { t0: now, amp: 3 }; G.downAt[n.knocked] = now; }
   if (n.status === 'caught') { FX.shake = { t0: now, amp: 8 }; FX.flash = { t0: now, color: '255,77,94', a: 0.38 }; }
   if (n.status === 'won') { const [gx, gy] = G.V.gem; burst(gx, gy, ['#5ef0d6', '#a5fff0', '#ffffff'], 34, 4.2, 900); FX.punch = { t0: now, gx, gy }; FX.flash = { t0: now, color: '200,255,245', a: 0.3 }; }
-  if (typeof m === 'object') { sfx.pebble(); G.pebbleFx = { from: G.s.pos, to: m.pebble, t0: now, landed: false }; G.aim = false; for (const i of n.heard || []) bark(i, 'suspicious', now + 260); }
+  if (typeof m === 'object') { sfx.pebble(); G.pebbleFx = { from: G.s.pos, to: m.pebble, t0: now, landed: false }; G.aim = false; for (const i of n.heard || []) bark(i, 'suspicious', now + 260); if (n.heard?.length) setTimeout(() => sfx.hm(), 300); }
   else n.knocked >= 0 ? (sfx.knock(), bark(n.knocked, 'knocked', now)) : sfx.step();
   G.s.gs.forEach((g, i) => { if (g[3] && !n.gs[i][3] && !(n.ko & (1 << i))) bark(i, 'return', now); });
   G.log.push(m); G.prev = G.s; G.s = n; G.moves++; G.a0 = now; G.anim = 0;
@@ -337,17 +337,17 @@ const turn = (a, b, f) => { const d = ((b - a + Math.PI * 3) % (Math.PI * 2)) - 
 // ---------- effects: particles, shake, flash, the crack's punch ----------
 const FX = { parts: [], shake: null, flash: null, punch: null, last: 0 };
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
-function burst(x, y, colors, n, speed, life) {
+function burst(x, y, colors, n, speed, life, list = FX) {
   if (REDUCED) n = Math.ceil(n / 3);
-  for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = speed * (0.35 + Math.random() * 0.65); FX.parts.push({ x: x + 0.5, y: y + 0.5, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.6, g: 3.2, life: life * (0.6 + Math.random() * 0.4), t: 0, color: colors[i % colors.length], size: 0.035 + Math.random() * 0.04 }); }
+  for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = speed * (0.35 + Math.random() * 0.65); list.parts.push({ x: x + 0.5, y: y + 0.5, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.6, g: 3.2, life: life * (0.6 + Math.random() * 0.4), t: 0, color: colors[i % colors.length], size: 0.035 + Math.random() * 0.04 }); }
 }
 function dust([x, y]) {
   for (let i = 0; i < 4; i++) FX.parts.push({ x: x + 0.5 + (Math.random() - 0.5) * 0.3, y: y + 0.72, vx: (Math.random() - 0.5) * 0.8, vy: -0.25 - Math.random() * 0.3, g: 0, life: 380, t: 0, color: 'rgba(214,180,140,0.55)', size: 0.05 + Math.random() * 0.04, fade: true });
 }
-function drawFx(ctx, T, dt) {
+function drawFx(ctx, T, dt, list = FX) {
   const k = dt / 1000;
-  FX.parts = FX.parts.filter(p => (p.t += dt) < p.life);
-  for (const p of FX.parts) {
+  list.parts = list.parts.filter(p => (p.t += dt) < p.life);
+  for (const p of list.parts) {
     p.vy += p.g * k; p.x += p.vx * k; p.y += p.vy * k;
     const life = 1 - p.t / p.life;
     ctx.globalAlpha = p.fade ? life * 0.8 : Math.min(1, life * 1.6); ctx.fillStyle = p.color;
@@ -417,7 +417,7 @@ function drawPlay(now) {
   if (!G.over) {
     const d = nextDanger(s), br = REDUCED ? 0 : (Math.sin(now / 260) + 1) / 2;
     ctx.strokeStyle = C.laser; ctx.lineWidth = 2 + br * 0.6; ctx.lineCap = 'round'; ctx.globalAlpha = 0.7 + 0.25 * br;
-    for (const kk of d.keys()) { const [x, y] = kk.split(',').map(Number); corners(ctx, T, x, y, br * T * 0.025); }
+    for (const kk of d.keys()) { const [x, y] = kk.split(',').map(Number); corners(ctx, T, x, y, br * T * 0.025); hatch(ctx, T, x, y); }
     ctx.globalAlpha = 1; ctx.lineCap = 'butt';
   }
   // the thief
@@ -478,6 +478,13 @@ function tension(s) {
   for (const m of [d1, d2]) for (const k of m.keys()) { const [x, y] = k.split(',').map(Number); if (near(x, y)) return 'tense'; }
   return s.gs.some((g, i) => (g[1] > 0 || g[3]) && !(s.ko & (1 << i))) ? 'tense' : 'calm';
 }
+// diagonal stripes inside a watched tile: readable without telling red from anything else
+function hatch(ctx, T, x, y) {
+  const a = ctx.globalAlpha, lw = ctx.lineWidth; ctx.globalAlpha = a * 0.32; ctx.lineWidth = 1.3;
+  ctx.save(); ctx.beginPath(); ctx.rect(x * T + T * 0.14, y * T + T * 0.14, T * 0.72, T * 0.72); ctx.clip(); ctx.beginPath();
+  for (let k = 0.25; k < 2; k += 0.25) { const o = k * T; ctx.moveTo(x * T + Math.max(0, o - T), y * T + Math.min(o, T)); ctx.lineTo(x * T + Math.min(o, T), y * T + Math.max(0, o - T)); }
+  ctx.stroke(); ctx.restore(); ctx.globalAlpha = a; ctx.lineWidth = lw;
+}
 function corners(ctx, T, x, y, inset = 0) {
   const m = T * 0.12 - inset, l = T * 0.2, X = x * T, Y = y * T; ctx.beginPath();
   ctx.moveTo(X + m, Y + m + l); ctx.lineTo(X + m, Y + m); ctx.lineTo(X + m + l, Y + m);
@@ -515,6 +522,7 @@ function renderHome() {
   const streak = st?.count ? ` <b>${st.count}-night streak.</b>${st.tonight ? '' : ' Crack any vault tonight to keep it.'}` : '';
   $('job-line').innerHTML = (done === LEVELS.length ? '<b>All six cracked.</b> Now try the vaults other players built, or build your own.' : `<b>${done} of ${LEVELS.length}</b> house vaults cracked. Each one teaches a trick.`) + streak;
   $('jobs').innerHTML = LEVELS.map((L, i) => `<button type="button" class="${progress['h' + (i + 1)]?.won ? 'done' : ''}" data-i="${i}" aria-label="${L.name}"><b>${i + 1}</b>${progress['h' + (i + 1)]?.won ? 'cracked' : progress['h' + (i + 1)]?.tries ? 'tried' : 'open'}</button>`).join('');
+  $('jobs').querySelectorAll('button').forEach((b, i) => b.prepend(thumb(LEVELS[i], 30)));
   $('jobs').querySelectorAll('button').forEach(b => b.onclick = () => { sfx.wake(); playHouse(+b.dataset.i); });
   const mine = INIT?.mine;
   if (mine) {
@@ -536,6 +544,7 @@ function renderHome() {
   for (const b of list) {
     const r = progress[b.key], btn = document.createElement('button'); btn.type = 'button'; btn.className = 'vrow';
     btn.innerHTML = `<span class="n"></span><span class="s"></span><span class="tag ${r?.won ? 'ok' : r?.tries ? 'no' : ''}">${r?.won ? 'cracked' : r?.tries ? 'caught ×' + r.tries : 'new'}</span>`;
+    btn.classList.add('thumbed'); btn.prepend(thumb(b.level, 34));
     btn.querySelector('.n').textContent = b.name;
     btn.querySelector('.s').textContent = `by u/${b.author || 'someone'} · ${stumpedLine(b.stats)}`;
 
@@ -558,7 +567,8 @@ function renderVaultOfTheNight() {
   if (!v) { sec.hidden = true; return; }
   sec.hidden = false;
   const mine = v.owner === INIT.userId, r = progress[v.key];
-  $('votn').innerHTML = `<div class="n"></div><div class="sub"></div><div class="row"></div>`;
+  $('votn').innerHTML = `<div class="thumbrow"><span class="tslot"></span><div><div class="n"></div><div class="sub"></div></div></div><div class="row"></div>`;
+  $('votn').querySelector('.tslot').replaceWith(thumb(v.level, 56));
   $('votn').querySelector('.n').textContent = v.name;
   $('votn').querySelector('.sub').innerHTML = `${mine ? 'Yours.' : `By u/${escapeHtml(v.author || 'someone')}.`} Stumped <b>${v.stats.people - v.stats.cracked}</b> of <b>${v.stats.people}</b> ${v.stats.people === 1 ? 'thief' : 'thieves'} so far.`;
   const btn = document.createElement('button'); btn.type = 'button';
@@ -567,6 +577,30 @@ function renderVaultOfTheNight() {
   btn.onclick = () => { sfx.wake(); mine ? play(v.level, 'test', 'Your vault') : play(v.level, v.key, `By u/${v.author || 'someone'}`, null, v.owner); };
   $('votn').querySelector('.row').appendChild(btn);
   if (INIT?.isMod && !mine) $('votn').querySelector('.row').appendChild(removeButton(v));
+}
+// A tiny map of a vault: walls, the gem, guard routes, lasers and cameras. Cached per vault.
+const thumbCache = new WeakMap();
+function thumb(level, w) {
+  const key = w, per = thumbCache.get(level) || new Map(); thumbCache.set(level, per);
+  if (per.has(key)) return cloneThumb(per.get(key));
+  const V = parseL(level), dpr = Math.min(devicePixelRatio || 1, 2), t = w / V.w, h = Math.round(t * V.h);
+  const c = document.createElement('canvas'); c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.width = w + 'px'; c.style.height = h + 'px'; c.className = 'thumb'; c.setAttribute('aria-hidden', 'true');
+  const x = c.getContext('2d'); x.scale(dpr, dpr);
+  for (let yy = 0; yy < V.h; yy++) for (let xx = 0; xx < V.w; xx++) { x.fillStyle = V.walls.has(xx + ',' + yy) ? '#3a211b' : (xx + yy) % 2 ? '#6e5340' : '#765944'; x.fillRect(xx * t, yy * t, t + 0.5, t + 0.5); }
+  for (const l of V.lasers) { x.strokeStyle = '#ff4d5e'; x.lineWidth = Math.max(1, t * 0.18); x.beginPath(); const a = l.at, b = l.beam[l.beam.length - 1] || a; x.moveTo((a[0] + 0.5) * t, (a[1] + 0.5) * t); x.lineTo((b[0] + 0.5) * t, (b[1] + 0.5) * t); x.stroke(); }
+  for (const g of V.guards) {
+    const route = level.guards[g.i].path;
+    x.strokeStyle = 'rgba(255,181,71,0.7)'; x.lineWidth = Math.max(1, t * 0.16); x.beginPath(); route.forEach(([px, py], i) => i ? x.lineTo((px + 0.5) * t, (py + 0.5) * t) : x.moveTo((px + 0.5) * t, (py + 0.5) * t)); x.stroke();
+    const [px, py] = route[0]; x.fillStyle = '#ffb547'; x.beginPath(); x.arc((px + 0.5) * t, (py + 0.5) * t, t * 0.38, 0, 7); x.fill();
+  }
+  for (const cm of V.cams) { x.fillStyle = '#8fb3ff'; x.beginPath(); x.arc((cm.at[0] + 0.5) * t, (cm.at[1] + 0.5) * t, t * 0.36, 0, 7); x.fill(); }
+  const [gx, gy] = V.gem, r = t * 0.42; x.fillStyle = '#5ef0d6'; x.beginPath(); x.moveTo((gx + 0.5) * t, (gy + 0.5) * t - r); x.lineTo((gx + 0.5) * t + r, (gy + 0.5) * t); x.lineTo((gx + 0.5) * t, (gy + 0.5) * t + r); x.lineTo((gx + 0.5) * t - r, (gy + 0.5) * t); x.fill();
+  per.set(key, c);
+  return cloneThumb(c);
+}
+function cloneThumb(src) {
+  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height; c.style.cssText = src.style.cssText; c.className = 'thumb'; c.setAttribute('aria-hidden', 'true');
+  c.getContext('2d').drawImage(src, 0, 0); return c;
 }
 const stumpedLine = s => !s.people ? 'nobody has tried it yet' : `stumped ${s.people - s.cracked} of ${s.people}`;
 // Moderators only: two taps to take a vault off tonight's list.
@@ -683,12 +717,20 @@ function check() {
   const V = parse(L), sol = solve(V), straight = Math.abs(START[0] - B.d.gem[0]) + Math.abs(START[1] - B.d.gem[1]);
   B.level = L; B.best = sol ? sol.length : 0; B.verdict = sol ? 'ok' : 'bad';
   const v = $('verdict');
-  if (!sol) { v.className = 'verdict bad'; v.textContent = 'Impossible right now. There is no way to reach the gem without being seen. Open a path or slow something down.'; }
+  let words, level;
+  if (!sol) { level = 0; words = 'Impossible right now. There is no way to reach the gem without being seen. Open a path or slow something down.'; }
   else {
-    v.className = 'verdict ok';
     const hard = B.best - straight;
-    v.textContent = `Crackable. The best possible run is ${B.best} moves` + (hard <= 0 ? ', a straight walk. Add something to get in the way.' : hard < 4 ? '. Fairly easy.' : hard < 8 ? '. A real puzzle.' : '. Nasty. People will need several tries.');
+    level = hard <= 0 ? 1 : hard < 4 ? 2 : hard < 8 ? 3 : 4;
+    words = `Crackable. The best possible run is ${B.best} moves.` + (hard <= 0 ? ' Add something to get in the way.' : hard < 4 ? ' Make it meaner.' : hard < 8 ? ' People will have to think.' : ' People will need several tries.');
   }
+  // a meter from impossible to nasty, so the verdict reads at a glance
+  const labels = ['Impossible', 'Straight walk', 'Easy', 'A real puzzle', 'Nasty'];
+  v.className = 'verdict ' + (sol ? 'ok' : 'bad');
+  v.innerHTML = `<div class="meter" data-level="${level}" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="vtext"><b>${labels[level]}.</b> </div>`;
+  v.querySelector('.vtext').append(words.replace(/^Impossible right now\. |^Crackable\. /, ''));
+  if (B.lastLevel !== undefined && B.lastLevel !== level) { v.classList.add('changed'); }
+  B.lastLevel = level;
   $('b-lock').disabled = B.verdict !== 'ok' || !!myBuilt();
   $('b-test').disabled = B.verdict !== 'ok';
 }
@@ -735,35 +777,62 @@ function renderBuilder() {
     say({ wall: 'Tap floor to place a wall, tap a wall to remove it.', guard: 'Tap floor to place a guard, then draw its route.', laser: 'Tap a wall to mount a laser on it.', cam: 'Tap floor to place a camera.', gem: 'Tap a floor tile in the top half to move the gem.', erase: 'Tap any part to remove it.' }[B.tool]);
   }
 }
+const BFX = { parts: [], rings: [], last: 0, hover: null };
+const builtCache = new WeakMap();
 function drawBuilder(now) {
   if (!B.d) return;
-  const L = B.level || draftToLevel(B.d); let V; try { V = parseL(L); } catch { return; }
-  const ctx = BP.ctx, T = BP.T;
+  const L = B.level || draftToLevel(B.d);
+  let V = builtCache.get(L);
+  if (!V) { try { V = parseL(L); } catch { return; } builtCache.set(L, V); }
+  const ctx = BP.ctx, T = BP.T, dt = BFX.last ? Math.min(50, now - BFX.last) : 16; BFX.last = now;
   BP.begin(V); BP.floor(V);
   // entrance marker
-  { const [cx, cy] = BP.c(...START); ctx.fillStyle = C.you; ctx.globalAlpha = 0.5; ctx.font = `600 ${T * 0.22}px ${css('--mono')}`; ctx.textAlign = 'center'; ctx.fillText('IN', cx, cy + T * 0.08); ctx.globalAlpha = 1; }
+  { const [cx, cy] = BP.c(...START); ctx.fillStyle = C.you; ctx.globalAlpha = 0.55 + 0.2 * Math.sin(now / 400); ctx.font = `600 ${T * 0.22}px ${FONT.mono}`; ctx.textAlign = 'center'; ctx.fillText('IN', cx, cy + T * 0.08); ctx.globalAlpha = 1; }
+  // the tile under the pointer, in the colour of the selected part
+  if (BFX.hover && !REDUCED) { const [hx, hy] = BFX.hover; ctx.strokeStyle = TOOL_COLOR[B.tool] || C.text; ctx.globalAlpha = 0.8; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(hx * T + 3, hy * T + 3, T - 6, T - 6, 6); ctx.stroke(); ctx.globalAlpha = 1; }
   BP.gem(V, now);
   const t = Math.floor(now / 700);
-  V.lasers.forEach((l, i) => BP.laser(V, l, laserOn(l, t), laserOn(l, t + 1), now));
+  V.lasers.forEach(l => BP.laser(V, l, laserOn(l, t), laserOn(l, t + 1), now));
   V.cams.forEach(c => BP.cam(V, c, camDir(c, t), ANG[camDir(c, t)], now));
   V.guards.forEach((g, i) => {
     const path = B.d.guards[i]?.path || [];
-    ctx.strokeStyle = C.guard; ctx.globalAlpha = 0.7; ctx.lineWidth = 3; ctx.setLineDash([2, 5]); ctx.lineCap = 'round';
-    ctx.beginPath(); path.forEach((p, k) => { const [cx, cy] = BP.c(...p); k ? ctx.lineTo(cx, cy) : ctx.moveTo(cx, cy); }); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
-    for (const p of path.slice(1)) { const [cx, cy] = BP.c(...p); ctx.fillStyle = C.guard; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(cx, cy, T * 0.07, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    // the route marches in the direction he walks
+    ctx.strokeStyle = C.guard; ctx.globalAlpha = 0.75; ctx.lineWidth = 3; ctx.setLineDash([2, 6]); ctx.lineDashOffset = -now / 60; ctx.lineCap = 'round';
+    ctx.beginPath(); path.forEach((p, k) => { const [cx, cy] = BP.c(...p); k ? ctx.lineTo(cx, cy) : ctx.moveTo(cx, cy); }); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1;
+    for (const p of path.slice(1)) { const [cx, cy] = BP.c(...p); ctx.fillStyle = C.guard; ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.arc(cx, cy, T * 0.07, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
     const [x, y, f] = g.seq[t % g.seq.length];
     BP.cone([x, y], ANG[f], rayV(V, [x, y], f, g.see).length, C.guard, 0.15); BP.guard(x, y, ANG[f]); BP.torch(x, y, ANG[f], now, g.i);
   });
+  // placement rings
+  BFX.rings = BFX.rings.filter(r => now - r.t0 < 450);
+  for (const r of BFX.rings) { const e = (now - r.t0) / 450, [cx, cy] = BP.c(r.x, r.y); ctx.strokeStyle = r.color; ctx.globalAlpha = 1 - e; ctx.lineWidth = 2.5 * (1 - e) + 0.5; ctx.beginPath(); ctx.arc(cx, cy, T * (0.25 + 0.45 * ease(e)), 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+  drawFx(ctx, T, dt, BFX);
   // selection ring
   const s = B.routing != null ? { kind: 'guard', i: B.routing } : B.sel;
   if (s) {
     const tiles = s.kind === 'guard' ? (B.d.guards[s.i]?.path || []).slice(-1) : s.kind === 'laser' ? [B.d.lasers[s.i]?.at] : s.kind === 'cam' ? [B.d.cams[s.i]?.at] : [];
-    ctx.strokeStyle = C.text; ctx.lineWidth = 2; for (const p of tiles) if (p) corners(ctx, T, p[0], p[1]);
+    const br = (Math.sin(now / 240) + 1) / 2; ctx.strokeStyle = C.text; ctx.lineWidth = 2; ctx.lineCap = 'round'; for (const p of tiles) if (p) corners(ctx, T, p[0], p[1], br * T * 0.03); ctx.lineCap = 'butt';
   }
 }
+const TOOL_COLOR = { wall: C.wall, guard: C.guard, laser: C.laser, cam: C.cam, gem: C.gem, erase: C.muted };
+function placed(x, y, kind) {
+  const color = kind === 'erase' ? '#9aa2b4' : TOOL_COLOR[kind] || C.text;
+  BFX.rings.push({ x, y, t0: performance.now(), color });
+  burst(x, y, [color, '#f6f3ea'], kind === 'erase' ? 6 : 10, 1.8, 420, BFX);
+  sfx.place(kind === 'erase');
+}
+$('bboard').addEventListener('pointermove', e => {
+  const r = $('bboard').getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / BP.T), y = Math.floor((e.clientY - r.top) / BP.T);
+  BFX.hover = x >= 0 && y >= 0 && x < W7 && y < H9 && e.pointerType === 'mouse' ? [x, y] : null;
+});
+$('bboard').addEventListener('pointerleave', () => { BFX.hover = null; });
 $('bboard').addEventListener('pointerup', e => {
   const r = $('bboard').getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / BP.T), y = Math.floor((e.clientY - r.top) / BP.T);
-  if (x >= 0 && y >= 0 && x < W7 && y < H9) tapTile(x, y);
+  if (x < 0 || y < 0 || x >= W7 || y >= H9) return;
+  sfx.wake();
+  const before = JSON.stringify(B.d);
+  tapTile(x, y);
+  if (JSON.stringify(B.d) !== before) placed(x, y, B.tool);
 });
 $('vaultName').addEventListener('input', e => { B.d.name = e.target.value.slice(0, 24); saveDraft(); });
 // A random vault from tonight's parts: try a few, keep the trickiest one that can still be cracked.
@@ -980,10 +1049,26 @@ const sfx = {
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
     o.connect(g).connect(this.out); o.start(t); o.stop(t + d + 0.02);
   },
-  step() { this.tone(180, 0.06, 'triangle', 0.08, 120); },
-  knock() { this.tone(140, 0.18, 'square', 0.1, 60); },
-  alarm() { this.tone(880, 0.16, 'sawtooth', 0.08); setTimeout(() => this.tone(660, 0.22, 'sawtooth', 0.08), 170); },
-  win() { [660, 880, 1320].forEach((f, i) => setTimeout(() => this.tone(f, 0.25, 'sine', 0.1), i * 90)); },
+  // a soft burst of filtered noise: footfalls, thuds, scuffs
+  thud(freq, dur, v) {
+    const a = this.ac; if (!a) return; const t = a.currentTime, n = Math.floor(a.sampleRate * dur), buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+    const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(); f.type = 'lowpass'; f.frequency.value = freq; g.gain.value = v;
+    src.buffer = buf; src.connect(f).connect(g).connect(this.out); src.start(t);
+  },
+  // footsteps alternate feet and never sound quite the same twice
+  foot: 0,
+  step() { this.foot ^= 1; const v = 0.85 + Math.random() * 0.3; this.thud(this.foot ? 520 : 440, 0.07, 0.22 * v); this.tone((this.foot ? 190 : 165) * v, 0.05, 'triangle', 0.05, 110); },
+  knock() { this.thud(260, 0.22, 0.6); this.tone(120, 0.25, 'sine', 0.16, 45); setTimeout(() => this.tone(1500, 0.06, 'triangle', 0.04, 1200), 140); },
+  // a guard's 'hm?': two little rising tones
+  hm() { this.tone(230, 0.09, 'triangle', 0.07, 210); setTimeout(() => this.tone(260, 0.14, 'triangle', 0.07, 330), 100); },
+  alarm() { this.tone(880, 0.16, 'sawtooth', 0.08); setTimeout(() => this.tone(660, 0.22, 'sawtooth', 0.08), 170); this.thud(180, 0.3, 0.35); },
+  // a crack: a rising arpeggio and a shimmer of high notes
+  win() {
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.32, 'triangle', 0.09), i * 70));
+    for (let i = 0; i < 6; i++) setTimeout(() => this.tone(2093 + Math.random() * 1200, 0.12, 'sine', 0.025), 300 + i * 45);
+  },
+  place(erase) { erase ? this.tone(300, 0.08, 'triangle', 0.06, 160) : (this.thud(900, 0.05, 0.25), this.tone(420, 0.06, 'triangle', 0.05, 600)); },
   pebble() { this.tone(1400, 0.05, 'triangle', 0.06, 900); setTimeout(() => this.tone(700, 0.08, 'triangle', 0.09, 500), 260); setTimeout(() => this.tone(620, 0.06, 'triangle', 0.05, 480), 360); },
 };
 // Music waits for the first tap (browsers block sound before that), then follows the screen.
