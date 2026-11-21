@@ -21,7 +21,7 @@ Most daily games are one puzzle for everyone, solved alone. We wanted a daily ga
 ## What it does
 **Every night, a new VAULT post goes up in the subreddit.**
 
-**Crack.** You move one tile at a time through a vault to reach the gem. After every move of yours, everything else moves: guards walk their routes with torches, lasers switch on and off, cameras turn. Red corners mark the tiles that will be watched after your next move, so getting caught always feels fair. Sneak into a guard from behind to knock him out. You carry one pebble: throw it and nearby guards turn to look at the noise for two turns. Every vault shows the best possible number of moves, so a perfect run is something to chase.
+**Crack.** You move one tile at a time through a vault to reach the gem. After every move of yours, everything else moves: guards walk their routes with torches, lasers switch on and off, cameras turn. Red corners mark the tiles that will be watched after your next move, so getting caught always feels fair. Walk into a guard from behind or from the side to knock them out. You carry one pebble: throw it and nearby guards turn to look at the noise for two turns. Every vault shows the best possible number of moves, so a perfect run is something to chase.
 
 **Training heist.** Six house vaults each teach one idea (timing, lasers, the pebble, long sight lines, cameras) and end in The Core, which uses all of them.
 

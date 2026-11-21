@@ -134,8 +134,11 @@
       font-family: var(--display);
       font-weight: 700;
     }
+    #b-lock {
+      white-space: nowrap;
+    }
     .vname {
-      font-size: 1.7rem;
+      font-size: clamp(1.35rem, 7.4vw, 1.7rem);
       line-height: 1.05;
     }
     .title {
@@ -451,6 +454,10 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 6px;
+    }
+    /* four tools (a night with one kind of part) sit on one row */
+    .parts:has(> :nth-child(4):last-child) {
+      grid-template-columns: repeat(4, 1fr);
     }
     .parts button {
       padding: 9px 6px;
@@ -816,6 +823,10 @@
       flex-direction: column;
       gap: 4px;
     }
+    #pebble[hidden],
+    .legend[hidden] {
+      display: none;
+    }
     .overlay .extras:empty {
       display: none;
     }
@@ -1039,19 +1050,8 @@
             ><button class="ghost" id="wait" type="button">Wait</button>
           </div>
         </div>
-        <div class="legend">
-          <span style="--c: var(--guard)">guard</span
-          ><span style="--c: var(--laser)">laser, on and off</span
-          ><span style="--c: var(--cam)">camera, turns each move</span>
-        </div>
-        <p class="hint">
-          <b>Swipe</b>
-          or tap to move. Red corners are watched next turn. Sneak into a guard
-          <b>from behind</b>
-          to knock him out. One
-          <b>pebble</b>
-          turns nearby guards for two turns.
-        </p>
+        <div class="legend" id="legend"></div>
+        <p class="hint" id="hint"></p>
       </main>
 
       <!-- BUILD -->
@@ -1134,7 +1134,7 @@
               ><span
                 ><b>Guards</b>
                 look where their cap points. Walk into one from behind or the
-                side to knock him out; from the front, you’re caught.</span
+                side to knock them out; from the front, you’re caught.</span
               >
             </li>
             <li>

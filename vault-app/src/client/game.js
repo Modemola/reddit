@@ -240,12 +240,21 @@ $('home-link').onkeydown = e => { if (e.key === 'Enter') show('home'); };
 // ---------- crack ----------
 const P = painter($('board'));
 const G = { queue: null, face: 'U', gAng: [], cAng: [], blinkAt: 0, frames: [], lastCap: 0, endAt: 0, result: null, drawn: {}, aim: false, barks: [], pebbleFx: null, L: null, key: '', label: '', next: null, V: null, s: null, prev: null, anim: 1, a0: 0, moves: 0, over: null, best: 0, owner: null };
+// the legend and the one-line rules only mention what this vault actually has
+function explain(V) {
+  const g = V.guards.length, l = V.lasers.length, c = V.cams.length;
+  $('legend').innerHTML = [g && '<span style="--c: var(--guard)">guard</span>', l && '<span style="--c: var(--laser)">laser, on and off</span>', c && '<span style="--c: var(--cam)">camera, turns each move</span>'].filter(Boolean).join('');
+  $('legend').hidden = !(g || l || c);
+  $('hint').innerHTML = '<b>Swipe</b> or tap to move. Red corners are watched next turn.' + (g ? ' Walk into a guard <b>from behind or the side</b> to knock them out. Your <b>pebble</b> turns nearby guards for two turns.' : '') + (l && !g ? ' A flickering beam fires next turn.' : '') + (c && !g ? ' Slip past a camera while it looks away.' : '');
+  $('pebble').hidden = !g;
+}
 function play(L, key, label, next, owner) {
   Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1, tryNo: (progress[key]?.tries || 0) + 1 });
   for (const f of G.frames || []) f.bmp?.close?.();
   G.log = []; G.queue = null; G.face = 'U'; G.gAng = []; G.cAng = []; FX.parts = []; FX.shake = FX.flash = FX.punch = null; G.downAt = {}; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
   G.best = (solve(G.V) || []).length;
   G.ghost = loadGhost(key, G.V);
+  explain(G.V);
   $('overlay').hidden = true; $('coach').hidden = true; $('crowd').hidden = false; coachState.tip = null; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
 }
 function restart() { play(G.L, G.key, G.label, G.next, G.owner); }
@@ -302,7 +311,7 @@ $('overlay').onclick = () => {
 };
 $('restart').onclick = () => { sfx.wake(); restart(); };
 $('wait').onclick = () => { sfx.wake(); move('W'); };
-$('pebble').onclick = () => { sfx.wake(); if (G.over || !G.s.peb) return; G.aim = !G.aim; renderPlay(); };
+$('pebble').onclick = () => { sfx.wake(); if (G.over || !G.s.peb || !G.V.guards.length) return; G.aim = !G.aim; renderPlay(); };
 let down = null;
 const swipeDir = (dx, dy) => Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U');
 $('board').addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, used: false }; sfx.wake(); });
@@ -1069,8 +1078,8 @@ const TIPS = {
   move: 'Swipe, or tap a tile next to you, to move. Everything else moves after you.',
   corners: 'Red corners are watched after your next move. Tap yourself to wait a turn.',
   arrow: 'The dashed line shows where a guard steps next. Time your move around it.',
-  behind: 'That guard isn’t facing you. Walk into him from behind or the side to knock him out.',
-  pebble: 'This guard faces you. Tap Pebble and throw it past him: he’ll turn to look.',
+  behind: 'That guard isn’t facing you. Walk into them from behind or the side to knock them out.',
+  pebble: 'This guard faces you. Tap Pebble and throw it past them: they’ll turn to look.',
   aim: 'Tap a ringed tile. Guards within 3 tiles turn to the noise for two turns.',
   laser: 'A flickering dashed beam fires next turn. Step through when it’s dark.',
   camera: 'The camera turns every move. Slip past when it looks away.',
