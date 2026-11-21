@@ -14,22 +14,27 @@ const W7 = W, H9 = H;
 const LEVELS = HOUSE;
 
 // ---------- shared drawing ----------
+const FONT = { display: css('--display'), body: css('--body') };
+const ANG = { R: 0, D: Math.PI / 2, L: Math.PI, U: -Math.PI / 2 };
 function painter(cv) {
-  const ctx = cv.getContext('2d'); let DPR = 1, T = 0, layer = null, layerSig = '', lightCv = null;
+  const ctx = cv.getContext('2d'); let DPR = 1, T = 0, layer = null, layerSig = '', lightCv = null, tintCv = null;
   const rnd = (x, y, i) => { const n = Math.sin(x * 127.1 + y * 311.7 + i * 74.7) * 43758.5453; return n - Math.floor(n); };
   function boards(L, x, y) {
-    // three oak planks per tile, joints staggered, a little grain
+    // three oak planks per tile, joints staggered, a little grain and a soft sheen
     const X = x * T, Y = y * T, h = T / 3;
     for (let i = 0; i < 3; i++) {
       L.fillStyle = rnd(x, y, i) > 0.5 ? C.floor : C.floor2; L.fillRect(X, Y + i * h, T, h);
-      L.strokeStyle = C.grain; L.globalAlpha = 0.5; L.lineWidth = 1;
-      for (let g = 0; g < 2; g++) { const gy = Y + i * h + h * (0.3 + 0.4 * rnd(x, y, i * 3 + g)); L.beginPath(); L.moveTo(X + T * rnd(x, y, 9 + g), gy); L.lineTo(X + T * Math.min(1, rnd(x, y, 9 + g) + 0.45), gy + 0.5); L.stroke(); }
+      const sheen = L.createLinearGradient(X, Y + i * h, X, Y + (i + 1) * h); sheen.addColorStop(0, 'rgba(255,230,190,0.07)'); sheen.addColorStop(1, 'rgba(0,0,0,0.06)');
+      L.fillStyle = sheen; L.fillRect(X, Y + i * h, T, h);
+      L.strokeStyle = C.grain; L.globalAlpha = 0.45; L.lineWidth = 1;
+      for (let g = 0; g < 2; g++) { const gy = Y + i * h + h * (0.3 + 0.4 * rnd(x, y, i * 3 + g)); L.beginPath(); L.moveTo(X + T * rnd(x, y, 9 + g), gy); L.quadraticCurveTo(X + T * (rnd(x, y, 9 + g) + 0.2), gy + 1.2, X + T * Math.min(1, rnd(x, y, 9 + g) + 0.45), gy + 0.4); L.stroke(); }
       L.globalAlpha = 1; L.fillStyle = C.grain; L.fillRect(X, Y + (i + 1) * h - 1, T, 1);
       const j = X + T * (((x * 3 + y * 7 + i * 5) % 4) / 4 + 0.12); L.fillRect(j, Y + i * h, 1, h);
     }
   }
   function brick(L, x, y) {
-    const X = x * T, Y = y * T, top = T * 0.8;
+    // a wall seen from above: a brick top, a dark front face below it, a lit top edge
+    const X = x * T, Y = y * T, top = T * 0.78;
     L.fillStyle = C.wallside; L.fillRect(X, Y, T, T);
     L.fillStyle = C.mortar; L.fillRect(X, Y, T, top);
     const rows = 3, bh = top / rows;
@@ -38,89 +43,186 @@ function painter(cv) {
       for (let b = -1; b < 3; b++) {
         const bx = X + off + b * T / 2 + 1, w = T / 2 - 2, x0 = Math.max(X + 1, bx), x1 = Math.min(X + T - 1, bx + w);
         if (x1 <= x0) continue;
-        L.fillStyle = C.wall; L.globalAlpha = 0.82 + 0.18 * rnd(x * 4 + b, y * 3 + r, 1); L.fillRect(x0, Y + r * bh + 1, x1 - x0, bh - 2); L.globalAlpha = 1;
+        L.fillStyle = C.wall; L.globalAlpha = 0.8 + 0.2 * rnd(x * 4 + b, y * 3 + r, 1); L.fillRect(x0, Y + r * bh + 1, x1 - x0, bh - 2);
+        L.globalAlpha = 0.12; L.fillStyle = '#ffd9c0'; L.fillRect(x0, Y + r * bh + 1, x1 - x0, 1); L.globalAlpha = 1;
       }
     }
+    const face = L.createLinearGradient(X, Y + top, X, Y + T); face.addColorStop(0, '#2a1d18'); face.addColorStop(1, C.wallside);
+    L.fillStyle = face; L.fillRect(X, Y + top, T, T - top);
+    L.fillStyle = 'rgba(255,220,200,0.10)'; L.fillRect(X, Y, T, 1.5);
+  }
+  function isSolid(V, x, y) {
+    if (x < 0 || y < 0 || x >= V.w || y >= V.h) return true;
+    const k = x + ',' + y, cam = V.cams.some(c => c.at[0] === x && c.at[1] === y), las = V.lasers.some(l => l.at[0] === x && l.at[1] === y);
+    return (V.walls.has(k) && !cam && !las) || (las && (x === 0 || y === 0 || x === V.w - 1 || y === V.h - 1 || isWallTile(V, x, y)));
+  }
+  function shade(L, V) {
+    // walls cast soft shadows onto the floor below and beside them
+    for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
+      if (isSolid(V, x, y)) continue;
+      const X = x * T, Y = y * T;
+      if (isSolid(V, x, y - 1)) { const g = L.createLinearGradient(X, Y, X, Y + T * 0.45); g.addColorStop(0, 'rgba(10,5,2,0.5)'); g.addColorStop(1, 'rgba(10,5,2,0)'); L.fillStyle = g; L.fillRect(X, Y, T, T * 0.45); }
+      if (isSolid(V, x - 1, y)) { const g = L.createLinearGradient(X, Y, X + T * 0.22, Y); g.addColorStop(0, 'rgba(10,5,2,0.32)'); g.addColorStop(1, 'rgba(10,5,2,0)'); L.fillStyle = g; L.fillRect(X, Y, T * 0.22, T); }
+      if (isSolid(V, x + 1, y)) { const g = L.createLinearGradient(X + T, Y, X + T * 0.78, Y); g.addColorStop(0, 'rgba(10,5,2,0.32)'); g.addColorStop(1, 'rgba(10,5,2,0)'); L.fillStyle = g; L.fillRect(X + T * 0.78, Y, T * 0.22, T); }
+    }
+    // and the room falls off into darkness at its edges
+    const W = V.w * T, Hh = V.h * T, v = L.createRadialGradient(W / 2, Hh / 2, Math.min(W, Hh) * 0.35, W / 2, Hh / 2, Math.hypot(W, Hh) * 0.62);
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.38)'); L.fillStyle = v; L.fillRect(0, 0, W, Hh);
   }
   const api = {
     ctx, get T() { return T; },
-    size(V) { DPR = Math.min(devicePixelRatio || 1, 2.5); const w = cv.clientWidth || 400; T = w / V.w; cv.style.height = (T * V.h) + 'px'; cv.width = Math.round(w * DPR); cv.height = Math.round(T * V.h * DPR); },
-    begin(V) { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = C.night; ctx.fillRect(0, 0, V.w * T, V.h * T); },
+    size(V) { DPR = Math.min(devicePixelRatio || 1, 2); const w = cv.clientWidth || 400; T = w / V.w; cv.style.height = (T * V.h) + 'px'; cv.width = Math.round(w * DPR); cv.height = Math.round(T * V.h * DPR); },
+    // ox, oy shake the view; sc zooms it around (zx, zy) for a crack's punch
+    begin(V, ox = 0, oy = 0, sc = 1, zx = 0, zy = 0) {
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = C.night; ctx.fillRect(0, 0, V.w * T, V.h * T);
+      if (ox || oy || sc !== 1) { ctx.translate(ox + zx, oy + zy); ctx.scale(sc, sc); ctx.translate(-zx, -zy); }
+    },
     c(x, y) { return [(x + 0.5) * T, (y + 0.5) * T]; },
-    floor(V) {
+    floor(V, lit = true) {
       // The floor and walls never change during a vault, so they are drawn once and reused.
-      const sig = V.w + 'x' + V.h + ':' + T + ':' + [...V.walls].join(';');
+      const sig = V.w + 'x' + V.h + ':' + T + ':' + lit + ':' + [...V.walls].join(';');
       if (!layer || layerSig !== sig) {
         layer = document.createElement('canvas'); layer.width = cv.width; layer.height = cv.height; layerSig = sig;
         const L = layer.getContext('2d'); L.setTransform(DPR, 0, 0, DPR, 0, 0);
-        for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
-          const k = x + ',' + y, cam = V.cams.some(c => c.at[0] === x && c.at[1] === y), las = V.lasers.some(l => l.at[0] === x && l.at[1] === y);
-          const wall = (V.walls.has(k) && !cam && !las) || (las && (x === 0 || y === 0 || x === V.w - 1 || y === V.h - 1 || isWallTile(V, x, y)));
-          wall ? brick(L, x, y) : boards(L, x, y);
-        }
+        for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) isSolid(V, x, y) ? brick(L, x, y) : boards(L, x, y);
+        if (lit) shade(L, V);
       }
       ctx.drawImage(layer, 0, 0, V.w * T, V.h * T);
     },
     // Night over everything, with pools of light cut out where the light is.
+    // Light is soft, so this layer is drawn at a quarter of the resolution and scaled up: same look, far less work.
     light(V, sources) {
-      if (!lightCv || lightCv.width !== cv.width || lightCv.height !== cv.height) { lightCv = document.createElement('canvas'); lightCv.width = cv.width; lightCv.height = cv.height; }
-      const L = lightCv.getContext('2d'); L.setTransform(DPR, 0, 0, DPR, 0, 0); L.globalCompositeOperation = 'source-over';
+      const LS = 0.25, lw = Math.max(1, Math.round(V.w * T * LS)), lh = Math.max(1, Math.round(V.h * T * LS));
+      if (!lightCv || lightCv.width !== lw || lightCv.height !== lh) { lightCv = document.createElement('canvas'); lightCv.width = lw; lightCv.height = lh; }
+      const L = lightCv.getContext('2d'); L.setTransform(LS, 0, 0, LS, 0, 0); L.globalCompositeOperation = 'source-over';
       L.clearRect(0, 0, V.w * T, V.h * T); L.fillStyle = 'rgba(7, 10, 26, 0.5)'; L.fillRect(0, 0, V.w * T, V.h * T);
       L.globalCompositeOperation = 'destination-out';
       for (const s of sources) { const [cx, cy] = api.c(s.x, s.y), R = s.r * T, g = L.createRadialGradient(cx, cy, 0, cx, cy, R); g.addColorStop(0, 'rgba(0,0,0,' + s.a + ')'); g.addColorStop(1, 'rgba(0,0,0,0)'); L.fillStyle = g; L.fillRect(cx - R, cy - R, 2 * R, 2 * R); }
-      ctx.drawImage(lightCv, 0, 0, V.w * T, V.h * T);
-      ctx.globalCompositeOperation = 'lighter';
-      for (const s of sources) if (s.tint) { const [cx, cy] = api.c(s.x, s.y), R = s.r * T * 0.9, g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R); g.addColorStop(0, s.tint); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R); }
-      ctx.globalCompositeOperation = 'source-over';
+      ctx.imageSmoothingEnabled = true; ctx.drawImage(lightCv, 0, 0, V.w * T, V.h * T);
+      // coloured glow (torch amber, gem teal, laser red) also lives at low resolution: one additive copy per frame
+      if (!tintCv || tintCv.width !== lw || tintCv.height !== lh) { tintCv = document.createElement('canvas'); tintCv.width = lw; tintCv.height = lh; }
+      const TC = tintCv.getContext('2d'); TC.setTransform(LS, 0, 0, LS, 0, 0); TC.globalCompositeOperation = 'source-over'; TC.clearRect(0, 0, V.w * T, V.h * T); TC.globalCompositeOperation = 'lighter';
+      for (const s of sources) if (s.tint) { const [cx, cy] = api.c(s.x, s.y), R = s.r * T * 0.9, g = TC.createRadialGradient(cx, cy, 0, cx, cy, R); g.addColorStop(0, s.tint); g.addColorStop(1, 'rgba(0,0,0,0)'); TC.fillStyle = g; TC.fillRect(cx - R, cy - R, 2 * R, 2 * R); }
+      ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(tintCv, 0, 0, V.w * T, V.h * T); ctx.globalCompositeOperation = 'source-over';
     },
-    torch(gx, gy, f, now) {
-      // a small flame carried at the guard's side
-      const [cx, cy] = [(gx + 0.5) * T, (gy + 0.5) * T], [fx, fy] = DIRS[f], sx = cx + (-fy) * T * 0.3 + fx * T * 0.06, sy = cy + fx * T * 0.3 + fy * T * 0.06;
-      const fl = 1 + 0.18 * Math.sin(now / 70 + gx * 3) + 0.1 * Math.sin(now / 37 + gy);
-      ctx.fillStyle = '#ffdf8a'; ctx.beginPath(); ctx.ellipse(sx, sy, T * 0.07 * fl, T * 0.1 * fl, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(sx, sy + T * 0.02, T * 0.035, 0, 7); ctx.fill();
+    torch(gx, gy, ang, now, seed = 0) {
+      // a small flame carried at the guard's side, flickering
+      const [cx, cy] = [(gx + 0.5) * T, (gy + 0.5) * T], fx = Math.cos(ang), fy = Math.sin(ang);
+      const sx = cx - fy * T * 0.3 + fx * T * 0.08, sy = cy + fx * T * 0.3 + fy * T * 0.08;
+      const fl = 1 + 0.16 * Math.sin(now / 70 + seed * 3) + 0.1 * Math.sin(now / 37 + seed);
+      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, T * 0.32 * fl); g.addColorStop(0, 'rgba(255,200,110,0.55)'); g.addColorStop(1, 'rgba(255,160,60,0)');
+      ctx.fillStyle = g; ctx.fillRect(sx - T * 0.4, sy - T * 0.4, T * 0.8, T * 0.8);
+      ctx.fillStyle = '#ff9d3c'; ctx.beginPath(); ctx.ellipse(sx, sy - T * 0.02, T * 0.075 * fl, T * 0.105 * fl, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#ffe9a8'; ctx.beginPath(); ctx.ellipse(sx, sy, T * 0.04 * fl, T * 0.06 * fl, 0, 0, 7); ctx.fill();
     },
-    gem(V, now) {
-      const [cx, cy] = api.c(...V.gem), r = T * 0.24 * (1 + 0.06 * Math.sin(now / 300));
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, T * 0.7); g.addColorStop(0, C.gem + '55'); g.addColorStop(1, C.gem + '00');
+    gem(V, now, glow = 1) {
+      // a cut gem that floats, breathes light and catches a glint now and then
+      const [cx, cy0] = api.c(...V.gem), cy = cy0 + Math.sin(now / 520) * T * 0.035, r = T * 0.23;
+      const pulse = 0.75 + 0.25 * Math.sin(now / 380);
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, T * 0.85); g.addColorStop(0, `rgba(94,240,214,${0.38 * pulse * glow})`); g.addColorStop(1, 'rgba(94,240,214,0)');
       ctx.fillStyle = g; ctx.fillRect(cx - T, cy - T, 2 * T, 2 * T);
-      ctx.fillStyle = C.gem; ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r * 0.8, cy - r * 0.2); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r * 0.8, cy - r * 0.2); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx - r * 0.8, cy - r * 0.2); ctx.lineTo(cx + r * 0.8, cy - r * 0.2); ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(cx, cy0 + T * 0.3, T * 0.17, T * 0.05, 0, 0, 7); ctx.fill();
+      const top = cy - r * 0.62, girdle = cy - r * 0.12, tip = cy + r;
+      const facet = (pts, fill) => { ctx.fillStyle = fill; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fill(); };
+      facet([[cx - r, girdle], [cx - r * 0.5, top], [cx, top], [cx - r * 0.2, girdle]], '#a5fff0');
+      facet([[cx - r * 0.2, girdle], [cx, top], [cx + r * 0.5, top], [cx + r * 0.25, girdle]], '#7cf7e2');
+      facet([[cx + r * 0.25, girdle], [cx + r * 0.5, top], [cx + r, girdle]], '#45d9c0');
+      facet([[cx - r, girdle], [cx - r * 0.2, girdle], [cx, tip]], '#5ef0d6');
+      facet([[cx - r * 0.2, girdle], [cx + r * 0.25, girdle], [cx, tip]], '#3fcfb6');
+      facet([[cx + r * 0.25, girdle], [cx + r, girdle], [cx, tip]], '#2aa893');
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx - r, girdle); ctx.lineTo(cx + r, girdle); ctx.stroke();
+      const gl = (now % 2600) / 2600;
+      if (gl < 0.18) { const k = Math.sin((gl / 0.18) * Math.PI), sx = cx - r * 0.45, sy = top + r * 0.1, L = T * 0.22 * k; ctx.strokeStyle = `rgba(255,255,255,${0.9 * k})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(sx - L, sy); ctx.lineTo(sx + L, sy); ctx.moveTo(sx, sy - L); ctx.lineTo(sx, sy + L); ctx.stroke(); }
     },
     laser(V, l, on, next, now) {
       const [ex, ey] = api.c(...l.at), end = l.beam.length ? api.c(...l.beam[l.beam.length - 1]) : [ex, ey], [dx, dy] = DIRS[l.dir];
-      const fx = end[0] + dx * T * 0.5, fy = end[1] + dy * T * 0.5;
-      if (on) { ctx.strokeStyle = C.laser; ctx.shadowColor = C.laser; ctx.shadowBlur = 12; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(fx, fy); ctx.stroke(); ctx.shadowBlur = 0; ctx.lineWidth = 1; ctx.strokeStyle = '#fff'; ctx.stroke(); }
-      else if (next) { ctx.strokeStyle = C.laser; ctx.globalAlpha = 0.5 + 0.4 * Math.sin(now / 90); ctx.setLineDash([4, 6]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(fx, fy); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; }
-      ctx.fillStyle = C.wallside; ctx.fillRect(l.at[0] * T + T * 0.2, l.at[1] * T + T * 0.2, T * 0.6, T * 0.6);
-      ctx.fillStyle = on ? C.laser : '#7a3540'; ctx.beginPath(); ctx.arc(ex, ey, T * 0.12, 0, 7); ctx.fill();
+      const fx = end[0] + dx * T * 0.5, fy = end[1] + dy * T * 0.5, sx = ex + dx * T * 0.18, sy = ey + dy * T * 0.18;
+      if (on) {
+        const j = 1 + 0.18 * Math.sin(now / 28) + 0.1 * Math.sin(now / 11);
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(255,60,80,0.18)'; ctx.lineWidth = T * 0.24 * j; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(fx, fy); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,77,94,0.6)'; ctx.lineWidth = T * 0.09 * j; ctx.stroke();
+        ctx.strokeStyle = '#fff3f4'; ctx.lineWidth = Math.max(1, T * 0.025); ctx.stroke();
+        for (let i = 0; i < 3; i++) { const a = now / 60 + i * 2.1, r = T * (0.04 + 0.05 * ((Math.sin(a * 3.1) + 1) / 2)); ctx.fillStyle = i ? 'rgba(255,120,130,0.8)' : '#fff'; ctx.beginPath(); ctx.arc(fx - dx * T * 0.04 + Math.cos(a) * r, fy - dy * T * 0.04 + Math.sin(a) * r, T * 0.018, 0, 7); ctx.fill(); }
+        ctx.lineCap = 'butt';
+      } else if (next) {
+        ctx.strokeStyle = C.laser; ctx.globalAlpha = 0.45 + 0.4 * Math.sin(now / 80); ctx.setLineDash([T * 0.08, T * 0.12]); ctx.lineDashOffset = -now / 30; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(fx, fy); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1;
+      }
+      // the emitter housing and its lens
+      ctx.fillStyle = '#16100e'; ctx.beginPath(); ctx.roundRect(l.at[0] * T + T * 0.18, l.at[1] * T + T * 0.18, T * 0.64, T * 0.64, T * 0.12); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1; ctx.stroke();
+      const lens = on ? 1 : next ? 0.55 + 0.35 * Math.sin(now / 80) : 0.25;
+      const lg = ctx.createRadialGradient(sx, sy, 0, sx, sy, T * 0.2); lg.addColorStop(0, `rgba(255,90,105,${lens})`); lg.addColorStop(1, 'rgba(255,90,105,0)');
+      ctx.fillStyle = lg; ctx.fillRect(sx - T * 0.2, sy - T * 0.2, T * 0.4, T * 0.4);
+      ctx.fillStyle = on ? '#ffd0d5' : '#7a3540'; ctx.beginPath(); ctx.arc(ex, ey, T * 0.09, 0, 7); ctx.fill();
     },
-    cam(V, c, d, nd) {
-      api.cone(c.at, d, rayV(V, c.at, d, c.see).length, C.cam, 0.22);
-      const [cx, cy] = api.c(...c.at); ctx.fillStyle = C.wallside; ctx.beginPath(); ctx.arc(cx, cy, T * 0.32, 0, 7); ctx.fill();
-      ctx.fillStyle = C.cam; ctx.beginPath(); ctx.arc(cx, cy, T * 0.14, 0, 7); ctx.fill();
-      if (nd) { const n = DIRS[nd]; ctx.strokeStyle = C.cam; ctx.globalAlpha = 0.6; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx + n[0] * T * 0.2, cy + n[1] * T * 0.2); ctx.lineTo(cx + n[0] * T * 0.34, cy + n[1] * T * 0.34); ctx.stroke(); ctx.globalAlpha = 1; }
+    cam(V, c, d, ang, now) {
+      api.cone(c.at, ang, rayV(V, c.at, d, c.see).length, C.cam, 0.2);
+      const [cx, cy] = api.c(...c.at);
+      ctx.fillStyle = '#121626'; ctx.beginPath(); ctx.arc(cx, cy, T * 0.3, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(143,179,255,0.25)'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
+      ctx.fillStyle = '#2b3350'; ctx.beginPath(); ctx.roundRect(-T * 0.12, -T * 0.11, T * 0.32, T * 0.22, T * 0.05); ctx.fill();
+      ctx.fillStyle = C.cam; ctx.beginPath(); ctx.arc(T * 0.17, 0, T * 0.075, 0, 7); ctx.fill();
+      ctx.fillStyle = '#e8f0ff'; ctx.beginPath(); ctx.arc(T * 0.19, -T * 0.025, T * 0.022, 0, 7); ctx.fill();
+      ctx.restore();
+      if ((now % 1400) < 700) { ctx.fillStyle = '#ff4d5e'; ctx.beginPath(); ctx.arc(cx - T * 0.17, cy - T * 0.17, T * 0.035, 0, 7); ctx.fill(); }
     },
-    guard(gx, gy, f) {
+    guard(gx, gy, ang, o = {}) {
+      // seen from above: broad amber shoulders, arms, a head under a dark cap whose peak points where he looks
+      const [cx, cy] = [(gx + 0.5) * T, (gy + 0.5) * T], bob = (o.bob || 0) * T, S = T * 1.12;
+      ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.beginPath(); ctx.ellipse(cx, cy + T * 0.22, T * 0.27, T * 0.09, 0, 0, 7); ctx.fill();
+      ctx.save(); ctx.translate(cx, cy - bob); ctx.rotate(ang);
+      if (o.alert) { ctx.strokeStyle = C.laser; ctx.lineWidth = T * 0.05; ctx.beginPath(); ctx.arc(0, 0, S * 0.36, 0, 7); ctx.stroke(); }
+      // arms swing a little while walking
+      const sw = (o.bob || 0) * 1.4;
+      ctx.fillStyle = '#c47a2c';
+      ctx.beginPath(); ctx.ellipse(S * (0.02 + sw), -S * 0.24, S * 0.09, S * 0.06, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(S * (0.02 - sw), S * 0.24, S * 0.09, S * 0.06, 0, 0, 7); ctx.fill();
+      // shoulders
+      const sh = ctx.createLinearGradient(-S * 0.2, 0, S * 0.15, 0); sh.addColorStop(0, '#d98a34'); sh.addColorStop(1, C.guard);
+      ctx.fillStyle = sh; ctx.beginPath(); ctx.ellipse(-S * 0.03, 0, S * 0.17, S * 0.27, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(80,40,10,0.45)'; ctx.lineWidth = 1; ctx.stroke();
+      // head and cap
+      ctx.fillStyle = '#f3c48c'; ctx.beginPath(); ctx.arc(S * 0.04, 0, S * 0.13, 0, 7); ctx.fill();
+      ctx.fillStyle = '#1f2740'; ctx.beginPath(); ctx.arc(S * 0.01, 0, S * 0.11, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(S * 0.06, -S * 0.1); ctx.quadraticCurveTo(S * 0.26, 0, S * 0.06, S * 0.1); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffd27a'; ctx.beginPath(); ctx.arc(S * 0.03, 0, S * 0.028, 0, 7); ctx.fill();
+      ctx.restore();
+    },
+    guardDown(gx, gy, now, since) {
+      // knocked out: flat on the floor, seeing stars
       const [cx, cy] = [(gx + 0.5) * T, (gy + 0.5) * T];
-      ctx.fillStyle = C.guard; ctx.beginPath(); ctx.arc(cx, cy, T * 0.27, 0, 7); ctx.fill();
-      const [fx, fy] = DIRS[f]; ctx.fillStyle = C.night; ctx.beginPath(); ctx.arc(cx + fx * T * 0.12, cy + fy * T * 0.12, T * 0.07, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(cx, cy + T * 0.06, T * 0.34, T * 0.12, 0.4, 0, 7); ctx.fill();
+      ctx.fillStyle = '#8a5a26'; ctx.beginPath(); ctx.ellipse(cx, cy, T * 0.3, T * 0.15, 0.4, 0, 7); ctx.fill();
+      ctx.fillStyle = C.guard; ctx.beginPath(); ctx.arc(cx + T * 0.2, cy + T * 0.09, T * 0.12, 0, 7); ctx.fill();
+      if (now - since < 4000) for (let i = 0; i < 3; i++) { const a = now / 300 + i * 2.09; ctx.fillStyle = '#ffd27a'; ctx.font = `700 ${T * 0.18}px ${FONT.display}`; ctx.textAlign = 'center'; ctx.fillText('✦', cx + T * 0.2 + Math.cos(a) * T * 0.2, cy - T * 0.1 + Math.sin(a) * T * 0.08); }
     },
-    cone(at, dir, len, color, alpha) {
+    cone(at, ang, len, color, alpha, flicker = 0) {
       if (!len) return;
-      const [dx, dy] = DIRS[dir], [cx, cy] = [(at[0] + 0.5) * T, (at[1] + 0.5) * T], L = (len + 0.5) * T, Wd = 0.5 * T;
-      const ex = cx + dx * L, ey = cy + dy * L, px = -dy, py = dx;
-      const g = ctx.createLinearGradient(cx, cy, ex, ey); g.addColorStop(0, color + 'aa'); g.addColorStop(1, color + '10');
-      ctx.globalAlpha = Math.min(1, alpha * 3); ctx.fillStyle = g; ctx.beginPath();
-      ctx.moveTo(cx + px * T * 0.12, cy + py * T * 0.12); ctx.lineTo(ex + px * Wd, ey + py * Wd); ctx.lineTo(ex - px * Wd, ey - py * Wd); ctx.lineTo(cx - px * T * 0.12, cy - py * T * 0.12);
-      ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+      // a soft wedge of light along the facing angle
+      const [cx, cy] = [(at[0] + 0.5) * T, (at[1] + 0.5) * T], L = (len + 0.5) * T, Wd = 0.5 * T;
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
+      const g = ctx.createLinearGradient(0, 0, L, 0); g.addColorStop(0, color + 'b0'); g.addColorStop(0.7, color + '40'); g.addColorStop(1, color + '00');
+      ctx.globalAlpha = Math.min(1, alpha * 3) * (1 - flicker); ctx.fillStyle = g; ctx.beginPath();
+      ctx.moveTo(T * 0.1, -T * 0.12); ctx.lineTo(L, -Wd); ctx.quadraticCurveTo(L + T * 0.12, 0, L, Wd); ctx.lineTo(T * 0.1, T * 0.12); ctx.closePath(); ctx.fill();
+      ctx.restore(); ctx.globalAlpha = 1;
     },
-    thief(px, py, caught) {
-      const [cx, cy] = [(px + 0.5) * T, (py + 0.5) * T];
-      ctx.fillStyle = '#00000066'; ctx.beginPath(); ctx.ellipse(cx, cy + T * 0.2, T * 0.22, T * 0.08, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = caught ? C.laser : C.you; ctx.beginPath(); ctx.arc(cx, cy, T * 0.25, 0, 7); ctx.fill();
-      ctx.fillStyle = C.night; ctx.fillRect(cx - T * 0.17, cy - T * 0.07, T * 0.34, T * 0.09);
-      ctx.fillStyle = C.you; ctx.fillRect(cx - T * 0.1, cy - T * 0.05, T * 0.05, T * 0.05); ctx.fillRect(cx + T * 0.05, cy - T * 0.05, T * 0.05, T * 0.05);
+    thief(px, py, o = {}) {
+      // a hooded thief in a black mask; the eyes look where you're heading
+      const [cx, cy] = [(px + 0.5) * T, (py + 0.5) * T], hop = o.hop || 0, sq = o.squash || 0, lift = hop * T * 0.16;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(cx, cy + T * 0.22, T * 0.2 * (1 - 0.3 * hop), T * 0.07 * (1 - 0.3 * hop), 0, 0, 7); ctx.fill();
+      ctx.save(); ctx.translate(cx, cy + T * 0.22 - lift); ctx.scale(1 + sq, 1 - sq); ctx.translate(0, -T * 0.22);
+      const body = o.caught ? C.laser : C.you;
+      const g = ctx.createRadialGradient(-T * 0.08, -T * 0.1, T * 0.02, 0, 0, T * 0.3); g.addColorStop(0, '#ffffff'); g.addColorStop(0.5, body); g.addColorStop(1, o.caught ? '#a8202e' : '#c9c2b2');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, T * 0.25, T * 0.27, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = T * 0.03; ctx.beginPath(); ctx.arc(0, T * 0.02, T * 0.21, Math.PI * 0.18, Math.PI * 0.82); ctx.stroke();
+      const [fx, fy] = DIRS[o.face || 'U'], ex = fx * T * 0.05, ey = fy * T * 0.035;
+      ctx.fillStyle = '#0e1016'; ctx.beginPath(); ctx.roundRect(-T * 0.2 + ex * 0.4, -T * 0.09 + ey, T * 0.4, T * 0.13, T * 0.065); ctx.fill();
+      ctx.fillStyle = C.you;
+      if (o.caught) { ctx.strokeStyle = C.you; ctx.lineWidth = T * 0.025; for (const sx of [-T * 0.075, T * 0.075]) { const X = sx + ex, Y = -T * 0.025 + ey, r = T * 0.03; ctx.beginPath(); ctx.moveTo(X - r, Y - r); ctx.lineTo(X + r, Y + r); ctx.moveTo(X + r, Y - r); ctx.lineTo(X - r, Y + r); ctx.stroke(); } }
+      else { const open = o.blink ? 0.15 : 1; for (const sx of [-T * 0.075, T * 0.075]) { ctx.beginPath(); ctx.ellipse(sx + ex, -T * 0.025 + ey, T * 0.032, T * 0.032 * open, 0, 0, 7); ctx.fill(); } }
+      ctx.restore();
     },
   };
   return api;
@@ -137,20 +239,26 @@ $('home-link').onkeydown = e => { if (e.key === 'Enter') show('home'); };
 
 // ---------- crack ----------
 const P = painter($('board'));
-const G = { frames: [], lastCap: 0, endAt: 0, result: null, drawn: {}, aim: false, barks: [], pebbleFx: null, L: null, key: '', label: '', next: null, V: null, s: null, prev: null, anim: 1, a0: 0, moves: 0, over: null, best: 0, owner: null };
+const G = { queue: null, face: 'U', gAng: [], cAng: [], blinkAt: 0, frames: [], lastCap: 0, endAt: 0, result: null, drawn: {}, aim: false, barks: [], pebbleFx: null, L: null, key: '', label: '', next: null, V: null, s: null, prev: null, anim: 1, a0: 0, moves: 0, over: null, best: 0, owner: null };
 function play(L, key, label, next, owner) {
   Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1 });
-  G.log = []; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
+  G.log = []; G.queue = null; G.face = 'U'; G.gAng = []; G.cAng = []; FX.parts = []; FX.shake = FX.flash = FX.punch = null; G.downAt = {}; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
   G.best = (solve(G.V) || []).length;
   $('overlay').hidden = true; $('coach').hidden = true; coachState.tip = null; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
 }
 function restart() { play(G.L, G.key, G.label, G.next, G.owner); }
 function move(m) {
-  if (view !== 'play' || G.over || G.anim < 1) return;
+  if (view !== 'play' || G.over) return;
+  // a move made while the last one is still animating is kept and played straight after
+  if (G.anim < 1) { G.queue = m; return; }
   const n = step(G.V, G.s, m);
   if (!n) { bumpT = performance.now(); return; }
   const now = performance.now();
-  if (typeof m === 'object') { sfx.pebble(); G.pebbleFx = { from: G.s.pos, to: m.pebble, t0: now }; G.aim = false; for (const i of n.heard || []) bark(i, 'suspicious', now + 260); }
+  if (typeof m === 'string' && m !== 'W') { G.face = m; dust(G.s.pos); }
+  if (n.knocked >= 0) { const [gx, gy] = guardPos(G.V.guards[n.knocked], G.s); burst(gx, gy, ['#ffd27a', '#fff3c4'], 14, 2.6, 520); FX.shake = { t0: now, amp: 3 }; G.downAt[n.knocked] = now; }
+  if (n.status === 'caught') { FX.shake = { t0: now, amp: 8 }; FX.flash = { t0: now, color: '255,77,94', a: 0.38 }; }
+  if (n.status === 'won') { const [gx, gy] = G.V.gem; burst(gx, gy, ['#5ef0d6', '#a5fff0', '#ffffff'], 34, 4.2, 900); FX.punch = { t0: now, gx, gy }; FX.flash = { t0: now, color: '200,255,245', a: 0.3 }; }
+  if (typeof m === 'object') { sfx.pebble(); G.pebbleFx = { from: G.s.pos, to: m.pebble, t0: now, landed: false }; G.aim = false; for (const i of n.heard || []) bark(i, 'suspicious', now + 260); }
   else n.knocked >= 0 ? (sfx.knock(), bark(n.knocked, 'knocked', now)) : sfx.step();
   G.s.gs.forEach((g, i) => { if (g[3] && !n.gs[i][3] && !(n.ko & (1 << i))) bark(i, 'return', now); });
   G.log.push(m); G.prev = G.s; G.s = n; G.moves++; G.a0 = now; G.anim = 0;
@@ -193,15 +301,25 @@ $('restart').onclick = () => { sfx.wake(); restart(); };
 $('wait').onclick = () => { sfx.wake(); move('W'); };
 $('pebble').onclick = () => { sfx.wake(); if (G.over || !G.s.peb) return; G.aim = !G.aim; renderPlay(); };
 let down = null;
-$('board').addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; sfx.wake(); });
+const swipeDir = (dx, dy) => Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U');
+$('board').addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, used: false }; sfx.wake(); });
+// a swipe moves as soon as the finger has travelled far enough, without waiting for it to lift
+$('board').addEventListener('pointermove', e => {
+  if (!down || down.used || G.aim) return;
+  const dx = e.clientX - down.x, dy = e.clientY - down.y;
+  if (Math.hypot(dx, dy) > 18) { down.used = true; move(swipeDir(dx, dy)); }
+});
 $('board').addEventListener('pointerup', e => {
-  if (!down) return; const dx = e.clientX - down[0], dy = e.clientY - down[1]; down = null;
-  if (Math.hypot(dx, dy) > 22) { move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U')); return; }
+  if (!down) return; const d = down; down = null;
+  if (d.used) return;
+  const dx = e.clientX - d.x, dy = e.clientY - d.y;
+  if (Math.hypot(dx, dy) > 18 && !G.aim) { move(swipeDir(dx, dy)); return; }
   const r = $('board').getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / P.T), y = Math.floor((e.clientY - r.top) / P.T);
   if (G.aim) { const ok = pebbleTargets(G.V, G.s).some(p => p[0] === x && p[1] === y); if (ok) move({ pebble: [x, y] }); else { G.aim = false; renderPlay(); } return; }
   const [px, py] = G.s.pos, ddx = x - px, ddy = y - py;
   if (!ddx && !ddy) move('W'); else if (Math.abs(ddx) >= Math.abs(ddy)) move(ddx > 0 ? 'R' : 'L'); else move(ddy > 0 ? 'D' : 'U');
 });
+$('board').addEventListener('pointercancel', () => { down = null; });
 addEventListener('keydown', e => {
   if (view !== 'play' || e.target.tagName === 'INPUT') return;
   const m = { ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R', ' ': 'W' }[e.key];
@@ -211,70 +329,135 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && G.aim) { G.aim = false; renderPlay(); }
 });
 const lerp = (a, b, k) => a + (b - a) * k, ease = k => 1 - Math.pow(1 - k, 3);
-function drawPlay(now) {
-  const V = G.V, s = G.s, k = ease(G.anim), t = s.t, ctx = P.ctx, T = P.T, nextS = { ...s, t: t + 1, gs: advanceGuards(s.gs) };
-  P.begin(V); P.floor(V);
-  for (const [idx, n] of crowdMarks) {
-    const x = idx % V.w, y = Math.floor(idx / V.w), [cx, cy] = P.c(x, y), r = T * 0.13;
-    ctx.globalAlpha = Math.min(0.8, 0.22 + 0.1 * n); ctx.strokeStyle = C.laser; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r); ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r); ctx.stroke();
+const easeBack = k => { const c = 1.6; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
+const ANIM_MS = 160;
+// turn toward a target angle along the short way round
+const turn = (a, b, f) => { const d = ((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; return a + d * f; };
+
+// ---------- effects: particles, shake, flash, the crack's punch ----------
+const FX = { parts: [], shake: null, flash: null, punch: null, last: 0 };
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function burst(x, y, colors, n, speed, life) {
+  if (REDUCED) n = Math.ceil(n / 3);
+  for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = speed * (0.35 + Math.random() * 0.65); FX.parts.push({ x: x + 0.5, y: y + 0.5, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.6, g: 3.2, life: life * (0.6 + Math.random() * 0.4), t: 0, color: colors[i % colors.length], size: 0.035 + Math.random() * 0.04 }); }
+}
+function dust([x, y]) {
+  for (let i = 0; i < 4; i++) FX.parts.push({ x: x + 0.5 + (Math.random() - 0.5) * 0.3, y: y + 0.72, vx: (Math.random() - 0.5) * 0.8, vy: -0.25 - Math.random() * 0.3, g: 0, life: 380, t: 0, color: 'rgba(214,180,140,0.55)', size: 0.05 + Math.random() * 0.04, fade: true });
+}
+function drawFx(ctx, T, dt) {
+  const k = dt / 1000;
+  FX.parts = FX.parts.filter(p => (p.t += dt) < p.life);
+  for (const p of FX.parts) {
+    p.vy += p.g * k; p.x += p.vx * k; p.y += p.vy * k;
+    const life = 1 - p.t / p.life;
+    ctx.globalAlpha = p.fade ? life * 0.8 : Math.min(1, life * 1.6); ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x * T, p.y * T, p.size * T * (p.fade ? 1 + (1 - life) : 1), 0, 7); ctx.fill();
   }
   ctx.globalAlpha = 1;
-  const lights = [{ x: V.gem[0], y: V.gem[1], r: 1.7, a: 0.9, tint: 'rgba(94,240,214,0.10)' }];
-  { const p = G.prev.pos, q = s.pos; lights.push({ x: lerp(p[0], q[0], k), y: lerp(p[1], q[1], k), r: 2, a: 0.75 }); }
-  for (const g of V.guards) if (!(s.ko & (1 << g.i))) { const a = guardPos(g, G.prev), b = guardPos(g, s), fl = 0.06 * Math.sin(now / 90 + g.i); lights.push({ x: lerp(a[0], b[0], k), y: lerp(a[1], b[1], k), r: 3 + fl, a: 0.95, tint: 'rgba(255,160,70,0.13)' }); }
-  for (const l of V.lasers) if (laserOn(l, t)) for (const p of l.beam) lights.push({ x: p[0], y: p[1], r: 0.9, a: 0.35, tint: 'rgba(255,60,80,0.05)' });
+}
+// the next turn's danger only changes when the state does, so it is worked out once per move
+const nextDangerCache = new WeakMap();
+function nextDanger(s) {
+  let d = nextDangerCache.get(s);
+  if (!d) {
+    const nextS = { ...s, t: s.t + 1, gs: advanceGuards(s.gs) };
+    d = danger(G.V, nextS);
+    for (const g of G.V.guards) if (!(s.ko & (1 << g.i))) { const n = guardPos(g, nextS); d.set(n[0] + ',' + n[1], 'guard'); }
+    nextDangerCache.set(s, d);
+  }
+  return d;
+}
+
+function drawPlay(now) {
+  const V = G.V, s = G.s, raw = G.anim, k = ease(raw), t = s.t, ctx = P.ctx, T = P.T;
+  const dt = FX.last ? Math.min(50, now - FX.last) : 16; FX.last = now;
+  const smooth = 1 - Math.exp(-dt / 55);
+  // the camera: a shake on a bust, a little punch toward the gem on a crack
+  let ox = 0, oy = 0, sc = 1, zx = 0, zy = 0;
+  if (FX.shake && !REDUCED) { const e = (now - FX.shake.t0) / 450; if (e >= 1) FX.shake = null; else { const a = FX.shake.amp * (1 - e) * (1 - e); ox = Math.sin(now / 16) * a; oy = Math.cos(now / 21) * a; } }
+  if (FX.punch && !REDUCED) { const e = (now - FX.punch.t0) / 600; if (e >= 1) FX.punch = null; else { sc = 1 + 0.05 * Math.sin(Math.PI * Math.min(1, e * 1.5)) * (1 - e); [zx, zy] = P.c(FX.punch.gx, FX.punch.gy); } }
+  P.begin(V, ox, oy, sc, zx, zy); P.floor(V);
+  for (const [idx, n] of crowdMarks) {
+    const x = idx % V.w, y = Math.floor(idx / V.w), [cx, cy] = P.c(x, y), r = T * 0.12;
+    ctx.globalAlpha = Math.min(0.75, 0.25 + 0.1 * n); ctx.strokeStyle = C.laser; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r); ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r); ctx.stroke(); ctx.lineCap = 'butt';
+  }
+  ctx.globalAlpha = 1;
+  // where the thief is this frame: a short hop between tiles, a squash on landing, a shiver when blocked
+  const moved = G.prev.pos[0] !== s.pos[0] || G.prev.pos[1] !== s.pos[1];
+  const hop = moved && raw < 1 ? Math.sin(Math.PI * raw) : 0;
+  const land = (now - G.a0 - ANIM_MS) / 200, squash = moved && land > 0 && land < 1 && !REDUCED ? Math.sin(Math.PI * land) * 0.13 * (1 - land) : -hop * 0.06;
+  const bk = Math.max(0, 1 - (now - bumpT) / 200);
+  const tx = lerp(G.prev.pos[0], s.pos[0], k) + Math.sin(now / 18) * 0.05 * bk, ty = lerp(G.prev.pos[1], s.pos[1], k);
+  const lights = [{ x: V.gem[0], y: V.gem[1], r: 1.7, a: 0.9, tint: 'rgba(94,240,214,0.10)' }, { x: tx, y: ty, r: 2, a: 0.75 }];
+  const gp = V.guards.map(g => { const a = guardPos(g, G.prev), b = guardPos(g, s); return { g, a, b, x: lerp(a[0], b[0], k), y: lerp(a[1], b[1], k), out: !!(s.ko & (1 << g.i)) }; });
+  for (const q of gp) if (!q.out) lights.push({ x: q.x, y: q.y, r: 3 + 0.08 * Math.sin(now / 90 + q.g.i * 2), a: 0.95, tint: 'rgba(255,160,70,0.13)' });
+  for (const l of V.lasers) if (laserOn(l, t)) for (const p of l.beam) lights.push({ x: p[0], y: p[1], r: 0.9, a: 0.35, tint: 'rgba(255,60,80,0.06)' });
   for (const c of V.cams) lights.push({ x: c.at[0], y: c.at[1], r: 1.1, a: 0.4, tint: 'rgba(140,180,255,0.06)' });
   P.light(V, lights);
-  P.gem(V, now);
+  P.gem(V, now, s.status === 'won' ? 2 : 1);
   for (const l of V.lasers) P.laser(V, l, laserOn(l, t), laserOn(l, t + 1), now);
-  for (const c of V.cams) P.cam(V, c, camDir(c, t), camDir(c, t + 1));
-  for (const g of V.guards) {
-    const out = s.ko & (1 << g.i), a = guardPos(g, G.prev), b = guardPos(g, s);
-    if (out) { const [cx, cy] = P.c(a[0], a[1]); ctx.globalAlpha = 0.45; ctx.fillStyle = C.guard; ctx.beginPath(); ctx.ellipse(cx, cy, T * 0.3, T * 0.16, 0.5, 0, 7); ctx.fill(); ctx.globalAlpha = 1; continue; }
-    const gx = lerp(a[0], b[0], k), gy = lerp(a[1], b[1], k);
-    G.drawn[g.i] = [gx, gy];
-    P.cone([gx, gy], b[2], rayV(V, [b[0], b[1]], b[2], g.see).length, C.guard, 0.2 * k + 0.05);
-    P.guard(gx, gy, b[2]); P.torch(gx, gy, b[2], now);
-    if (s.gs[g.i][1] > 0 || s.gs[g.i][3]) { const [cx, cy] = P.c(gx, gy); ctx.fillStyle = C.guard; ctx.font = `700 ${T * 0.34}px ${css('--display')}`; ctx.textAlign = 'center'; ctx.fillText('?', cx + T * 0.28, cy - T * 0.2); }
-    const n = guardPos(g, nextS); if (n[0] !== b[0] || n[1] !== b[1]) { const [cx, cy] = P.c(gx, gy), [nx, ny] = P.c(n[0], n[1]); ctx.strokeStyle = C.guard; ctx.globalAlpha = 0.55; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(lerp(cx, nx, 0.7), lerp(cy, ny, 0.7)); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; }
+  V.cams.forEach((c, i) => { const d = camDir(c, t); G.cAng[i] = G.cAng[i] === undefined ? ANG[d] : turn(G.cAng[i], ANG[d], smooth); P.cam(V, c, d, G.cAng[i], now); });
+  // guards: they walk with a bob and turn smoothly; their torches flicker
+  for (const q of gp) {
+    const { g, a, b } = q;
+    if (q.out) { P.guardDown(a[0], a[1], now, G.downAt[g.i] || 0); continue; }
+    G.drawn[g.i] = [q.x, q.y];
+    G.gAng[g.i] = G.gAng[g.i] === undefined ? ANG[b[2]] : turn(G.gAng[g.i], ANG[b[2]], smooth);
+    const ang = G.gAng[g.i], walking = (a[0] !== b[0] || a[1] !== b[1]) && raw < 1;
+    P.cone([q.x, q.y], ang, rayV(V, [b[0], b[1]], b[2], g.see).length, C.guard, 0.2 * k + 0.05, 0.06 * (1 + Math.sin(now / 70 + g.i)));
+    const alert = s.status === 'caught' && s.by && s.by[0] === b[0] && s.by[1] === b[1];
+    P.guard(q.x, q.y, ang, { bob: walking ? Math.sin(Math.PI * raw) * 0.06 : 0, alert });
+    P.torch(q.x, q.y, ang, now, g.i);
+    if (s.gs[g.i][1] > 0 || s.gs[g.i][3]) { const [cx, cy] = P.c(q.x, q.y); ctx.fillStyle = C.guard; ctx.font = `700 ${T * 0.36}px ${FONT.display}`; ctx.textAlign = 'center'; ctx.fillText('?', cx + T * 0.3, cy - T * 0.22 + Math.sin(now / 180) * T * 0.04); }
+    const n = guardPos(g, { ...s, t: t + 1, gs: advanceGuards(s.gs) });
+    if (!G.over && (n[0] !== b[0] || n[1] !== b[1])) { const [cx, cy] = P.c(q.x, q.y), [nx, ny] = P.c(n[0], n[1]); ctx.strokeStyle = C.guard; ctx.globalAlpha = 0.6; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.lineDashOffset = -now / 40; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(lerp(cx, nx, 0.72), lerp(cy, ny, 0.72)); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1; }
   }
+  // red corners: the tiles watched after your next move, breathing so the eye finds them
   if (!G.over) {
-    const d = danger(V, nextS);
-    for (const g of V.guards) if (!(s.ko & (1 << g.i))) { const n = guardPos(g, nextS); d.set(n[0] + ',' + n[1], 'guard'); }
-    ctx.strokeStyle = C.laser; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
-    for (const kk of d.keys()) corners(ctx, T, ...kk.split(',').map(Number));
-    ctx.globalAlpha = 1;
+    const d = nextDanger(s), br = REDUCED ? 0 : (Math.sin(now / 260) + 1) / 2;
+    ctx.strokeStyle = C.laser; ctx.lineWidth = 2 + br * 0.6; ctx.lineCap = 'round'; ctx.globalAlpha = 0.7 + 0.25 * br;
+    for (const kk of d.keys()) { const [x, y] = kk.split(',').map(Number); corners(ctx, T, x, y, br * T * 0.025); }
+    ctx.globalAlpha = 1; ctx.lineCap = 'butt';
   }
-  const p = G.prev.pos, q = s.pos, bk = Math.max(0, 1 - (now - bumpT) / 180);
-  P.thief(lerp(p[0], q[0], k) + Math.sin(now / 20) * 0.04 * bk, lerp(p[1], q[1], k), s.status === 'caught');
-  if (s.status === 'caught' && s.by) { const [bx, by] = P.c(...s.by); ctx.fillStyle = C.laser; ctx.font = `700 ${T * 0.45}px ${css('--display')}`; ctx.textAlign = 'center'; ctx.fillText('!', bx, by - T * 0.35); }
+  // the thief
+  if (now > G.blinkAt + 140) { if (now > G.blinkAt + 3200 + Math.random() * 2000) G.blinkAt = now; }
+  P.thief(tx, ty, { hop, squash, face: G.face, caught: s.status === 'caught', blink: now - G.blinkAt < 140 });
+  if (s.status === 'caught' && s.by) { const [bx, by] = P.c(...s.by), pop = easeBack(Math.min(1, (now - G.endAt) / 260)); ctx.save(); ctx.translate(bx, by - T * 0.42); ctx.scale(pop, pop); ctx.fillStyle = C.laser; ctx.font = `700 ${T * 0.5}px ${FONT.display}`; ctx.textAlign = 'center'; ctx.fillText('!', 0, 0); ctx.restore(); }
   // aiming: who would hear (amber), where it can land (rings)
   if (G.aim && !G.over) {
-    ctx.fillStyle = C.guard; ctx.globalAlpha = 0.08;
-    for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) if (!V.walls.has(x + ',' + y) && V.guards.some(g => !(s.ko & (1 << g.i)) && (() => { const [gx, gy] = guardPos(g, s); return Math.abs(gx - x) + Math.abs(gy - y) <= HEARING; })())) ctx.fillRect(x * T, y * T, T, T);
-    ctx.globalAlpha = 0.9 + 0.1 * Math.sin(now / 150); ctx.strokeStyle = C.gem; ctx.lineWidth = 2;
-    for (const [x, y] of pebbleTargets(V, s)) { const [cx, cy] = P.c(x, y); ctx.beginPath(); ctx.arc(cx, cy, T * 0.18, 0, 7); ctx.stroke(); }
+    ctx.fillStyle = C.guard; ctx.globalAlpha = 0.09;
+    for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) if (!V.walls.has(x + ',' + y) && gp.some(q => !q.out && Math.abs(q.b[0] - x) + Math.abs(q.b[1] - y) <= HEARING)) ctx.fillRect(x * T, y * T, T, T);
+    const pr = (Math.sin(now / 160) + 1) / 2; ctx.globalAlpha = 0.85 + 0.15 * pr; ctx.strokeStyle = C.gem; ctx.lineWidth = 2;
+    for (const [x, y] of pebbleTargets(V, s)) { const [cx, cy] = P.c(x, y); ctx.beginPath(); ctx.arc(cx, cy, T * (0.16 + 0.03 * pr), 0, 7); ctx.stroke(); }
     ctx.globalAlpha = 1;
   }
   // the pebble in flight, then its ripple
   if (G.pebbleFx) {
     const f = G.pebbleFx, e = (now - f.t0) / 260, [ax, ay] = P.c(...f.from), [bx, by] = P.c(...f.to);
-    if (e < 1) { ctx.fillStyle = C.you; ctx.beginPath(); ctx.arc(lerp(ax, bx, e), lerp(ay, by, e) - Math.sin(e * Math.PI) * T * 0.8, T * 0.08, 0, 7); ctx.fill(); }
-    else if (e < 4) { const k2 = (e - 1) / 3; ctx.strokeStyle = C.you; ctx.globalAlpha = 1 - k2; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(bx, by, T * (0.2 + k2 * HEARING), 0, 7); ctx.stroke(); ctx.globalAlpha = 1; ctx.fillStyle = C.you; ctx.beginPath(); ctx.arc(bx, by, T * 0.07, 0, 7); ctx.fill(); }
-    else G.pebbleFx = null;
+    if (e < 1) { const x = lerp(ax, bx, e), y = lerp(ay, by, e) - Math.sin(e * Math.PI) * T * 0.8; ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(lerp(ax, bx, e), lerp(ay, by, e) + T * 0.1, T * 0.06, T * 0.025, 0, 0, 7); ctx.fill(); ctx.fillStyle = C.you; ctx.beginPath(); ctx.arc(x, y, T * 0.07, 0, 7); ctx.fill(); }
+    else if (e < 4) {
+      if (!f.landed) { f.landed = true; burst(f.to[0], f.to[1], ['rgba(214,180,140,0.9)', '#f6f3ea'], 8, 1.6, 420); }
+      const k2 = (e - 1) / 3; for (const off of [0, 0.25]) { const kk = Math.max(0, k2 - off); ctx.strokeStyle = C.you; ctx.globalAlpha = (1 - kk) * 0.8; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(bx, by, T * (0.2 + kk * HEARING), 0, 7); ctx.stroke(); }
+      ctx.globalAlpha = 1; ctx.fillStyle = C.you; ctx.beginPath(); ctx.arc(bx, by, T * 0.06, 0, 7); ctx.fill();
+    } else G.pebbleFx = null;
   }
+  drawFx(ctx, T, dt);
+  // a flash across the whole board on a bust or a crack
+  if (FX.flash) { const e = (now - FX.flash.t0) / 500; if (e >= 1) FX.flash = null; else { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = `rgba(${FX.flash.color},${FX.flash.a * (1 - e) * (1 - e)})`; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); ctx.restore(); } }
   // what the guards say
   G.barks = G.barks.filter(b => now - b.t0 < 1900);
   for (const b of G.barks) {
     if (now < b.t0) continue;
-    const at = G.drawn[b.i] || [0, 0], [cx, cy] = P.c(at[0], at[1]), a = Math.min(1, (now - b.t0) / 120, (1900 - (now - b.t0)) / 300);
-    ctx.font = `600 ${Math.max(11, T * 0.24)}px ${css('--body')}`; ctx.textAlign = 'center';
-    const w = ctx.measureText(b.text).width + 14, h = Math.max(20, T * 0.42), bx = Math.min(V.w * T - w / 2 - 4, Math.max(w / 2 + 4, cx)), by = cy - T * 0.62;
-    ctx.globalAlpha = a; ctx.fillStyle = b.kind === 'alert' ? C.laser : C.you;
-    ctx.beginPath(); ctx.roundRect(bx - w / 2, by - h / 2, w, h, 6); ctx.fill();
+    const at = G.drawn[b.i] || [0, 0], [cx, cy] = P.c(at[0], at[1]), age = now - b.t0, a = Math.min(1, age / 120, (1900 - age) / 300), pop = easeBack(Math.min(1, age / 220));
+    ctx.font = `600 ${Math.max(11, T * 0.24)}px ${FONT.body}`; ctx.textAlign = 'center';
+    const w = ctx.measureText(b.text).width + 16, h = Math.max(20, T * 0.42), bx = Math.min(V.w * T - w / 2 - 4, Math.max(w / 2 + 4, cx)), by = cy - T * 0.66;
+    ctx.save(); ctx.translate(cx, by + h / 2); ctx.scale(pop, pop); ctx.translate(-cx, -(by + h / 2));
+    ctx.globalAlpha = a; ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.roundRect(bx - w / 2, by - h / 2 + 2, w, h, 7); ctx.fill();
+    ctx.fillStyle = b.kind === 'alert' ? C.laser : C.you;
+    ctx.beginPath(); ctx.roundRect(bx - w / 2, by - h / 2, w, h, 7); ctx.fill();
     ctx.beginPath(); ctx.moveTo(cx - 5, by + h / 2 - 1); ctx.lineTo(cx, by + h / 2 + 6); ctx.lineTo(cx + 5, by + h / 2 - 1); ctx.fill();
-    ctx.fillStyle = C.night; ctx.fillText(b.text, bx, by + h * 0.18); ctx.globalAlpha = 1;
+    ctx.fillStyle = b.kind === 'alert' ? '#fff' : C.night; ctx.fillText(b.text, bx, by + h * 0.18); ctx.restore(); ctx.globalAlpha = 1;
   }
 }
 // Guard voices (from Hooja's guards, minus the lines about Hooja).
@@ -295,8 +478,8 @@ function tension(s) {
   for (const m of [d1, d2]) for (const k of m.keys()) { const [x, y] = k.split(',').map(Number); if (near(x, y)) return 'tense'; }
   return s.gs.some((g, i) => (g[1] > 0 || g[3]) && !(s.ko & (1 << i))) ? 'tense' : 'calm';
 }
-function corners(ctx, T, x, y) {
-  const m = T * 0.12, l = T * 0.2, X = x * T, Y = y * T; ctx.beginPath();
+function corners(ctx, T, x, y, inset = 0) {
+  const m = T * 0.12 - inset, l = T * 0.2, X = x * T, Y = y * T; ctx.beginPath();
   ctx.moveTo(X + m, Y + m + l); ctx.lineTo(X + m, Y + m); ctx.lineTo(X + m + l, Y + m);
   ctx.moveTo(X + T - m - l, Y + m); ctx.lineTo(X + T - m, Y + m); ctx.lineTo(X + T - m, Y + m + l);
   ctx.moveTo(X + m, Y + T - m - l); ctx.lineTo(X + m, Y + T - m); ctx.lineTo(X + m + l, Y + T - m);
@@ -562,14 +745,14 @@ function drawBuilder(now) {
   BP.gem(V, now);
   const t = Math.floor(now / 700);
   V.lasers.forEach((l, i) => BP.laser(V, l, laserOn(l, t), laserOn(l, t + 1), now));
-  V.cams.forEach(c => BP.cam(V, c, camDir(c, t), null));
+  V.cams.forEach(c => BP.cam(V, c, camDir(c, t), ANG[camDir(c, t)], now));
   V.guards.forEach((g, i) => {
     const path = B.d.guards[i]?.path || [];
     ctx.strokeStyle = C.guard; ctx.globalAlpha = 0.7; ctx.lineWidth = 3; ctx.setLineDash([2, 5]); ctx.lineCap = 'round';
     ctx.beginPath(); path.forEach((p, k) => { const [cx, cy] = BP.c(...p); k ? ctx.lineTo(cx, cy) : ctx.moveTo(cx, cy); }); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     for (const p of path.slice(1)) { const [cx, cy] = BP.c(...p); ctx.fillStyle = C.guard; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(cx, cy, T * 0.07, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
     const [x, y, f] = g.seq[t % g.seq.length];
-    BP.cone([x, y], f, rayV(V, [x, y], f, g.see).length, C.guard, 0.15); BP.guard(x, y, f);
+    BP.cone([x, y], ANG[f], rayV(V, [x, y], f, g.see).length, C.guard, 0.15); BP.guard(x, y, ANG[f]); BP.torch(x, y, ANG[f], now, g.i);
   });
   // selection ring
   const s = B.routing != null ? { kind: 'guard', i: B.routing } : B.sel;
@@ -688,22 +871,23 @@ function capture(now) {
   const first = !G.frames.length;
   if (!first && (!moving || now - G.lastCap < 90)) return;
   if (G.endAt && now - G.endAt > 1100) return;
-  const cv = $('board'), h = Math.round(CAP_W * cv.height / cv.width);
-  const c = capture.c || (capture.c = document.createElement('canvas')); c.width = CAP_W; c.height = h;
-  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(cv, 0, 0, CAP_W, h);
-  G.frames.push({ rgba: x.getImageData(0, 0, CAP_W, h).data, delay: first ? 700 : 90, h });
-  if (G.frames.length > 160) G.frames.splice(1, 1);
+  // snapshots are taken off the main thread (no read-back stall), small, and only while something moves
+  const cv = $('board'), h = Math.round(CAP_W * cv.height / cv.width), rec = { bmp: null, delay: first ? 700 : 90, h };
+  G.frames.push(rec);
+  if (G.frames.length > 160) G.frames.splice(1, 1)[0].bmp?.close?.();
   G.lastCap = now;
+  createImageBitmap(cv, { resizeWidth: CAP_W, resizeHeight: h, resizeQuality: 'low' }).then(b => { rec.bmp = b; }).catch(() => {});
 }
 function gifDataUrl() {
-  let fr = G.frames;
+  let fr = G.frames.filter(f => f.bmp);
+  if (fr.length < 2) return null;
   const w = CAP_W, h = fr[0].h, bar = 26, H = h + bar, res = G.result || { status: 'play', moves: G.moves };
   const text = `VAULT · ${G.L.name} · ${res.status === 'won' ? `cracked in ${res.moves}` : `caught on move ${res.moves}`}`;
   const c = document.createElement('canvas'); c.width = w; c.height = H; const x = c.getContext('2d', { willReadFrequently: true });
   for (let tries = 0; tries < 4; tries++) {
     const frames = fr.map((f, i) => {
       x.fillStyle = C.night; x.fillRect(0, 0, w, H);
-      x.putImageData(new ImageData(new Uint8ClampedArray(f.rgba), w, h), 0, 0);
+      x.drawImage(f.bmp, 0, 0, w, h);
       x.fillStyle = res.status === 'caught' ? C.laser : C.gem; x.fillRect(0, h, w, 2);
       x.fillStyle = C.text; x.font = `600 11px ${css('--body')}`; x.textAlign = 'center'; x.fillText(text, w / 2, h + 17, w - 10);
       return { rgba: x.getImageData(0, 0, w, H).data, delay: i === fr.length - 1 ? 1600 : f.delay };
@@ -817,7 +1001,11 @@ renderSound();
 
 // ---------- loop ----------
 function frame(now) {
-  if (view === 'play' && G.V) { if (G.anim < 1) G.anim = Math.min(1, (now - G.a0) / 150); drawPlay(now); capture(now); coach(); }
+  if (view === 'play' && G.V) {
+    if (G.anim < 1) G.anim = Math.min(1, (now - G.a0) / ANIM_MS);
+    if (G.anim >= 1 && G.queue !== null && !G.over) { const m = G.queue; G.queue = null; move(m); }
+    drawPlay(now); capture(now); coach();
+  }
   if (view === 'build') drawBuilder(now);
   requestAnimationFrame(frame);
 }
