@@ -213,8 +213,8 @@ function painter(cv) {
       const [cx, cy] = [(px + 0.5) * T, (py + 0.5) * T], hop = o.hop || 0, sq = o.squash || 0, lift = hop * T * 0.16;
       ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(cx, cy + T * 0.22, T * 0.2 * (1 - 0.3 * hop), T * 0.07 * (1 - 0.3 * hop), 0, 0, 7); ctx.fill();
       ctx.save(); ctx.translate(cx, cy + T * 0.22 - lift); ctx.scale(1 + sq, 1 - sq); ctx.translate(0, -T * 0.22);
-      const body = o.caught ? C.laser : C.you;
-      const g = ctx.createRadialGradient(-T * 0.08, -T * 0.1, T * 0.02, 0, 0, T * 0.3); g.addColorStop(0, '#ffffff'); g.addColorStop(0.5, body); g.addColorStop(1, o.caught ? '#a8202e' : '#c9c2b2');
+      const body = o.ghost ? C.gem : o.caught ? C.laser : C.you;
+      const g = ctx.createRadialGradient(-T * 0.08, -T * 0.1, T * 0.02, 0, 0, T * 0.3); g.addColorStop(0, '#ffffff'); g.addColorStop(0.5, body); g.addColorStop(1, o.ghost ? '#2aa893' : o.caught ? '#a8202e' : '#c9c2b2');
       ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, T * 0.25, T * 0.27, 0, 0, 7); ctx.fill();
       ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = T * 0.03; ctx.beginPath(); ctx.arc(0, T * 0.02, T * 0.21, Math.PI * 0.18, Math.PI * 0.82); ctx.stroke();
       const [fx, fy] = DIRS[o.face || 'U'], ex = fx * T * 0.05, ey = fy * T * 0.035;
@@ -244,6 +244,7 @@ function play(L, key, label, next, owner) {
   Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1 });
   G.log = []; G.queue = null; G.face = 'U'; G.gAng = []; G.cAng = []; FX.parts = []; FX.shake = FX.flash = FX.punch = null; G.downAt = {}; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
   G.best = (solve(G.V) || []).length;
+  G.ghost = loadGhost(key, G.V);
   $('overlay').hidden = true; $('coach').hidden = true; coachState.tip = null; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
 }
 function restart() { play(G.L, G.key, G.label, G.next, G.owner); }
@@ -278,6 +279,7 @@ function finish(n) {
     overlay('caught', 'CAUGHT', why(n.cause), 'Tap to try again');
   } else {
     sfx.win(); music.sting('cracked'); G.over = 'won';
+    saveGhost(G.key, G.log);
     overlay('won', 'CRACKED', `${G.moves} moves${G.moves <= G.best ? ' · a perfect run' : ` · best possible is ${G.best}`}. Caught ${tries - 1} ${tries - 1 === 1 ? 'time' : 'times'} first.`, G.next ? 'Tap for the next vault' : 'Tap to go back to the job sheet');
   }
   // what we show is local; what counts is the server's replay of the same moves
@@ -420,6 +422,12 @@ function drawPlay(now) {
     for (const kk of d.keys()) { const [x, y] = kk.split(',').map(Number); corners(ctx, T, x, y, br * T * 0.025); hatch(ctx, T, x, y); }
     ctx.globalAlpha = 1; ctx.lineCap = 'butt';
   }
+  // your best run so far, a turn at a time, as a faint ghost
+  if (G.ghost) {
+    const gs = G.ghost, i1 = Math.min(G.moves, gs.length - 1), i0 = Math.min(Math.max(0, G.moves - 1), gs.length - 1), kk = G.moves > gs.length - 1 ? 1 : k;
+    const gx = lerp(gs[i0][0], gs[i1][0], kk), gy = lerp(gs[i0][1], gs[i1][1], kk);
+    if (Math.abs(gx - tx) > 0.05 || Math.abs(gy - ty) > 0.05) { ctx.globalAlpha = 0.38; P.thief(gx, gy, { ghost: true, face: G.face }); ctx.globalAlpha = 1; }
+  }
   // the thief
   if (now > G.blinkAt + 140) { if (now > G.blinkAt + 3200 + Math.random() * 2000) G.blinkAt = now; }
   P.thief(tx, ty, { hop, squash, face: G.face, caught: s.status === 'caught', blink: now - G.blinkAt < 140 });
@@ -493,6 +501,23 @@ function corners(ctx, T, x, y, inset = 0) {
   ctx.moveTo(X + T - m - l, Y + T - m); ctx.lineTo(X + T - m, Y + T - m); ctx.lineTo(X + T - m, Y + T - m - l); ctx.stroke();
 }
 let crowdMarks = new Map();
+// ---------- your best run, as a ghost ----------
+// Kept on this device only. It's replayed against the vault before use, so a stale or damaged one is ignored.
+function loadGhost(key, V) {
+  if (key === 'test') return null;
+  let moves; try { moves = JSON.parse(localStorage.getItem('vault:ghost:' + key) || 'null'); } catch { return null; }
+  if (!Array.isArray(moves) || !moves.length) return null;
+  let st = startState(V); const pos = [st.pos];
+  for (const m of moves) { st = step(V, st, m); if (!st) return null; pos.push(st.pos); }
+  return st.status === 'won' ? pos : null;
+}
+function saveGhost(key, log) {
+  if (key === 'test') return;
+  try {
+    const old = JSON.parse(localStorage.getItem('vault:ghost:' + key) || 'null');
+    if (!Array.isArray(old) || log.length < old.length) localStorage.setItem('vault:ghost:' + key, JSON.stringify(log));
+  } catch {}
+}
 function statsFor(key) {
   const empty = { tries: 0, caught: 0, cracked: 0, people: 0, marks: {} };
   if (!INIT) return empty;
@@ -511,7 +536,8 @@ function renderPlay() {
   const pb = $('pebble'); pb.textContent = G.aim ? 'Cancel' : `Pebble ×${G.s?.peb ?? 0}`; pb.disabled = !G.s?.peb && !G.aim;
   pb.className = G.aim ? 'primary' : 'ghost';
   const rec = progress[G.key];
-  $('meta').innerHTML = `moves <b>${G.moves}</b> · best possible <b>${G.best}</b>` + (G.key !== 'test' ? ` · try <b>${(rec?.tries || 0) + (G.over ? 0 : 1)}</b>` : '');
+  if (G.ghost) $('meta').title = 'The teal ghost is your best run on this vault.';
+  $('meta').innerHTML = `moves <b>${G.moves}</b> · best possible <b>${G.best}</b>` + (G.ghost ? ` · <span class="ghostnote">your best <b>${G.ghost.length - 1}</b></span>` : '') + (G.key !== 'test' ? ` · try <b>${(rec?.tries || 0) + (G.over ? 0 : 1)}</b>` : '');
 }
 
 // ---------- home ----------
@@ -628,7 +654,7 @@ let PARTS = partsFor(dayNo);
 const PART_NAMES = { wall: ['wall', 'walls'], guard: ['guard', 'guards'], laser: ['laser', 'lasers'], cam: ['camera', 'cameras'] };
 const partsLine = () => Object.entries(PARTS).filter(([, n]) => n).map(([k, n]) => `${n} ${PART_NAMES[k][n === 1 ? 0 : 1]}`).join(', ');
 const NAMES = ['The Velvet Box', 'Glass Hours', 'The Night Ledger', 'Copper Lung', 'Quiet Room', 'The Long Hall', 'Moth Box', 'The Counting House', 'Low Tide', 'The Lantern'];
-const B = { d: null, tool: 'wall', sel: null, routing: null, verdict: null, best: 0 };
+const B = { hist: [], painting: false, d: null, tool: 'wall', sel: null, routing: null, verdict: null, best: 0 };
 const BP = painter($('bboard'));
 function blankDraft() { return { walls: [], gem: [3, 1], guards: [], lasers: [], cams: [], name: NAMES[Math.floor(hash(dayNo + 0.5) * NAMES.length)] }; }
 function loadDraft() { try { const v = JSON.parse(localStorage.getItem('vault:draft:' + dayNo) || 'null'); if (v && v.walls) return v; } catch {} return blankDraft(); }
@@ -709,7 +735,7 @@ function removeOcc(o) {
   if (o.kind === 'cam') d.cams.splice(o.i, 1);
 }
 let checkT = 0;
-function changed() { saveDraft(); renderBuilder(); clearTimeout(checkT); $('verdict').className = 'verdict'; $('verdict').textContent = 'Checking…'; checkT = setTimeout(check, 120); }
+function changed() { if (!B.painting) pushHistory(); saveDraft(); renderBuilder(); clearTimeout(checkT); $('verdict').className = 'verdict'; $('verdict').textContent = 'Checking…'; checkT = setTimeout(check, 120); }
 function check() {
   const L = draftToLevel(B.d);
   // lasers that sit on placed walls need that wall in the map
@@ -734,8 +760,24 @@ function check() {
   $('b-lock').disabled = B.verdict !== 'ok' || !!myBuilt();
   $('b-test').disabled = B.verdict !== 'ok';
 }
+// Undo: each committed change is a snapshot of the draft; a drag of walls counts as one change.
+function pushHistory() {
+  const snap = JSON.stringify(B.d);
+  if (B.hist.at(-1) !== snap) B.hist.push(snap);
+  if (B.hist.length > 80) B.hist.shift();
+  $('b-undo').disabled = B.hist.length < 2;
+}
+function undo() {
+  if (B.hist.length < 2) return;
+  B.hist.pop(); B.d = JSON.parse(B.hist.at(-1)); B.sel = null; B.routing = null;
+  $('vaultName').value = B.d.name || '';
+  saveDraft(); renderBuilder(); check(); sfx.place(true);
+  $('b-undo').disabled = B.hist.length < 2;
+}
 function openBuilder() {
   if (!B.d) B.d = loadDraft();
+  if (!B.hist.length) B.hist = [JSON.stringify(B.d)];
+  $('b-undo').disabled = B.hist.length < 2;
   const tip = $('b-tip');
   if (!tipsSeen.builder) {
     tip.innerHTML = 'Not sure where to start? Tap <strong>Surprise me</strong> for a layout from tonight’s parts, then make it meaner. Thieves carry one <strong>pebble</strong>, and the checker counts it, so a guard alone in a corridor won’t stop anyone.';
@@ -821,19 +863,44 @@ function placed(x, y, kind) {
   burst(x, y, [color, '#f6f3ea'], kind === 'erase' ? 6 : 10, 1.8, 420, BFX);
   sfx.place(kind === 'erase');
 }
-$('bboard').addEventListener('pointermove', e => {
-  const r = $('bboard').getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / BP.T), y = Math.floor((e.clientY - r.top) / BP.T);
-  BFX.hover = x >= 0 && y >= 0 && x < W7 && y < H9 && e.pointerType === 'mouse' ? [x, y] : null;
-});
-$('bboard').addEventListener('pointerleave', () => { BFX.hover = null; });
-$('bboard').addEventListener('pointerup', e => {
-  const r = $('bboard').getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / BP.T), y = Math.floor((e.clientY - r.top) / BP.T);
-  if (x < 0 || y < 0 || x >= W7 || y >= H9) return;
-  sfx.wake();
+const tileAt = e => { const r = $('bboard').getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / BP.T), y = Math.floor((e.clientY - r.top) / BP.T); return x >= 0 && y >= 0 && x < W7 && y < H9 ? [x, y] : null; };
+function tapWithFeedback(x, y) {
   const before = JSON.stringify(B.d);
   tapTile(x, y);
   if (JSON.stringify(B.d) !== before) placed(x, y, B.tool);
+}
+// With Wall or Erase selected, dragging paints: the first tile decides whether the drag adds or removes walls.
+let paint = null;
+function paintTile(x, y) {
+  const k = x + ',' + y; if (paint.seen.has(k)) return; paint.seen.add(k);
+  const occ = occupant(x, y), isWall = occ?.kind === 'wall';
+  if (B.tool === 'wall' && (paint.adding ? occ : !isWall)) return;
+  if (B.tool === 'erase' && (!occ || occ.kind === 'gem')) return;
+  tapWithFeedback(x, y);
+}
+$('bboard').addEventListener('pointerdown', e => {
+  const t = tileAt(e); if (!t) return;
+  sfx.wake();
+  if ((B.tool === 'wall' || B.tool === 'erase') && B.routing == null) {
+    try { $('bboard').setPointerCapture(e.pointerId); } catch {}
+    paint = { seen: new Set(), adding: B.tool === 'wall' && occupant(...t)?.kind !== 'wall' };
+    B.painting = true; paintTile(...t);
+  } else paint = null;
 });
+$('bboard').addEventListener('pointermove', e => {
+  const t = tileAt(e);
+  BFX.hover = t && e.pointerType === 'mouse' ? t : null;
+  if (paint && t) paintTile(...t);
+});
+$('bboard').addEventListener('pointerleave', () => { BFX.hover = null; });
+const endPaint = () => { if (!paint) return; paint = null; B.painting = false; pushHistory(); };
+$('bboard').addEventListener('pointerup', e => {
+  if (paint) { endPaint(); return; }
+  const t = tileAt(e); if (t) tapWithFeedback(...t);
+});
+$('bboard').addEventListener('pointercancel', endPaint);
+$('b-undo').onclick = () => undo();
+addEventListener('keydown', e => { if (view === 'build' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && e.target.tagName !== 'INPUT') { e.preventDefault(); undo(); } });
 $('vaultName').addEventListener('input', e => { B.d.name = e.target.value.slice(0, 24); saveDraft(); });
 // A random vault from tonight's parts: try a few, keep the trickiest one that can still be cracked.
 function surprise() {

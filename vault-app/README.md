@@ -14,6 +14,7 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 - Sneak into a guard **from behind** to knock them out. Walk into their face and you’re caught.
 - You carry one **pebble**. Throw it and every guard within 3 tiles turns to look at the noise for two turns.
 - Every vault shows the best possible number of moves. Beat it, or match it for a perfect run.
+- Once you’ve cracked a vault, your best run replays as a teal ghost that moves when you move, so you can race your own record.
 
 **Tonight’s job:** six house vaults, each teaching one trick, ending in The Core.
 
@@ -23,6 +24,7 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 - Place walls, draw guard routes, set laser rhythms and camera sweeps.
 - A checker solves your vault as you build. You can’t publish a vault nobody could crack, and it tells you when yours is “a straight walk” or “nasty”.
 - Stuck on a blank page? **Surprise me** builds a random vault from tonight’s parts that the checker has already proven crackable.
+- Drag to paint a line of walls, and undo anything (Ctrl+Z on a keyboard).
 - Lock it in. Your vault card then shows how many thieves it caught and how many cracked it.
 
 ## What makes it Reddit

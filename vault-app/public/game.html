@@ -593,6 +593,10 @@
     .coach[hidden] {
       display: none;
     }
+    .ghostnote,
+    .ghostnote b {
+      color: var(--gem);
+    }
     .vrow.thumbed {
       grid-template-columns: auto 1fr auto;
     }
@@ -923,6 +927,7 @@
           <button class="ghost" id="b-surprise" type="button">
             Surprise me
           </button>
+          <button class="ghost" id="b-undo" type="button" disabled>Undo</button>
           <button class="ghost" id="b-clear" type="button">Clear</button>
           <button class="primary" id="b-lock" type="button" style="flex:1">
             Lock it in
