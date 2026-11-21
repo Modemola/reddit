@@ -16,8 +16,47 @@ function hash(n: number): number {
 }
 
 export type Parts = {wall: number; guard: number; laser: number; cam: number}
+
+/** Some nights have a theme that shapes the parts box. Most nights are ordinary. */
+export type Theme = {name: string; line: string}
+const THEMES: (Theme & {parts: Parts})[] = [
+  {
+    name: 'Laser Night',
+    line: 'Lasers only, and plenty of them.',
+    parts: {wall: 7, guard: 0, laser: 3, cam: 0},
+  },
+  {
+    name: 'Double Patrol',
+    line: 'Three guards and nothing else to hide behind.',
+    parts: {wall: 6, guard: 3, laser: 0, cam: 0},
+  },
+  {
+    name: 'All Eyes',
+    line: 'Two cameras and a guard to work with them.',
+    parts: {wall: 8, guard: 1, laser: 0, cam: 2},
+  },
+  {
+    name: 'Lockdown',
+    line: 'A maze of walls, one guard and one camera.',
+    parts: {wall: 14, guard: 1, laser: 0, cam: 1},
+  },
+]
+/** Themed nights come round twice a week (nights 3 and 6 of each week), cycling through the themes. */
+export function themeFor(night: number): Theme | null {
+  const week = Math.floor(night / 7)
+  const day = night % 7
+  if (day !== 2 && day !== 5) return null
+  const t = THEMES[(week * 2 + (day === 5 ? 1 : 0)) % THEMES.length]
+  return t ? {name: t.name, line: t.line} : null
+}
+
 /** Tonight's box of parts. Everyone gets the same one. */
 export function partsFor(night: number): Parts {
+  const theme = themeFor(night)
+  if (theme) {
+    const t = THEMES.find(x => x.name === theme.name)
+    if (t) return {...t.parts}
+  }
   const r = (i: number) => hash(night * 7.77 + i)
   const p = {
     wall: 6 + Math.floor(r(1) * 5),

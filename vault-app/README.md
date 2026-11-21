@@ -20,7 +20,7 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 
 **Building**
 
-- Everyone gets the same box of parts tonight (for example 8 walls, 2 guards, 1 camera).
+- Everyone gets the same box of parts tonight (for example 8 walls, 2 guards, 1 camera). Twice a week the box has a theme: Laser Night, Double Patrol, All Eyes or Lockdown.
 - Place walls, draw guard routes, set laser rhythms and camera sweeps.
 - A checker solves your vault as you build. You can’t publish a vault nobody could crack, and it tells you when yours is “a straight walk” or “nasty”.
 - Stuck on a blank page? **Surprise me** builds a random vault from tonight’s parts that the checker has already proven crackable.
@@ -39,6 +39,8 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 - After a crack or a bust, one tap posts the run to the comments as a GIF, with a caption written by the server from its own replay.
 
 ## First time playing
+
+The **?** button in the header opens a card with every rule, any time.
 
 A new player skips the menu and starts in the first vault. Short tips appear on the board at the moment they matter (how to move, what red corners mean, how to knock out a guard, when to throw the pebble), each shown once.
 

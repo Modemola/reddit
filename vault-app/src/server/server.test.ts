@@ -25,6 +25,7 @@ import {onReq} from './server.ts'
 // A small in-memory stand-in for the Redis calls the server uses.
 const hashes = new Map<string, Map<string, string>>()
 const zsets = new Map<string, Map<string, number>>()
+const strings = new Map<string, string>()
 const h = (k: string) => hashes.get(k) ?? hashes.set(k, new Map()).get(k)!
 const fake = {
   hGetAll: async (k: string) => Object.fromEntries(h(k)),
@@ -43,6 +44,11 @@ const fake = {
     return v
   },
   hLen: async (k: string) => h(k).size,
+  get: async (k: string) => strings.get(k),
+  set: async (k: string, v: string) => {
+    strings.set(k, v)
+    return 'OK'
+  },
   hDel: async (k: string, fields: string[]) => {
     for (const f of fields) h(k).delete(f)
     return fields.length
@@ -115,6 +121,7 @@ after(async () => {
   await new Promise<void>(r => server.close(() => r()))
 })
 beforeEach(() => {
+  strings.clear()
   hashes.clear()
   zsets.clear()
 })
@@ -179,9 +186,10 @@ test('the server replays runs: a real crack counts, a bust leaves a mark, a half
   assert.equal(junk.status, 400)
 })
 
-const vault = (name = 'Moth Box'): Level => ({
-  name,
-  map: [
+// A crackable test vault built from whatever tonight's parts are, so the tests pass on any date.
+const vault = (name = 'Moth Box'): Level => {
+  const parts = partsFor(nightOf(Date.now()))
+  const map = [
     '#######',
     '#..G..#',
     '#.....#',
@@ -191,22 +199,42 @@ const vault = (name = 'Moth Box'): Level => ({
     '#.....#',
     '#.....#',
     '###S###',
-  ],
-  guards: [
-    {
-      path: [
-        [1, 4],
-        [2, 4],
-        [3, 4],
-        [4, 4],
-        [5, 4],
+  ]
+  if (parts.guard > 0)
+    return {
+      name,
+      map,
+      guards: [
+        {
+          path: [
+            [1, 4],
+            [2, 4],
+            [3, 4],
+            [4, 4],
+            [5, 4],
+          ],
+          see: 2,
+        },
       ],
-      see: 2,
-    },
-  ],
-  lasers: [],
-  cams: [],
-})
+      lasers: [],
+      cams: [],
+    }
+  if (parts.laser > 0)
+    return {
+      name,
+      map,
+      guards: [],
+      lasers: [{at: [0, 5], dir: 'R', on: 2, off: 2}],
+      cams: [],
+    }
+  return {
+    name,
+    map,
+    guards: [],
+    lasers: [],
+    cams: [{at: [5, 5], dirs: ['U', 'D']}],
+  }
+}
 
 test('publishing: one solvable vault per player per night, and others can crack it', async () => {
   const pub = await post<PublishRsp>(Endpoint.Publish, {level: vault()})

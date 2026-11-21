@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import {test} from 'node:test'
 import {guardPos, parse, replay, solve, startState, step} from './engine.ts'
-import {bestMoves, checkPlayerLevel, HOUSE, partsFor} from './vault.ts'
+import {
+  bestMoves,
+  checkPlayerLevel,
+  HOUSE,
+  partsFor,
+  themeFor,
+} from './vault.ts'
 
 test('house vaults keep the prototype solutions', () => {
   // same numbers the prototype solver printed
@@ -109,4 +115,18 @@ test('player vault checks', () => {
     /name/,
   )
   assert.ok(partsFor(0).guard >= 1)
+})
+
+test('themed nights: twice a week, each with a buildable parts box', () => {
+  const themed = Array.from({length: 28}, (_, n) => themeFor(n)).filter(
+    t => t !== null,
+  )
+  assert.equal(themed.length, 8)
+  assert.deepEqual(new Set(themed.map(t => t.name)).size, 4)
+  for (let n = 0; n < 60; n++) {
+    const p = partsFor(n)
+    // every night has something that can catch a thief, and walls to build with
+    assert.ok(p.guard + p.laser + p.cam >= 2, `night ${n}`)
+    assert.ok(p.wall >= 6, `night ${n}`)
+  }
 })

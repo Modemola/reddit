@@ -3,7 +3,7 @@
 import { showToast } from '@devvit/web/client';
 import { Endpoint } from '../shared/api.ts';
 import { advanceGuards, camDir, DIRS, danger, guardPos, HEARING, laserOn, parse, pebbleTargets, ray, solve, startState, step } from '../shared/engine.ts';
-import { bestMoves, deadliness, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEEPS, W } from '../shared/vault.ts';
+import { bestMoves, deadliness, themeFor, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEEPS, W } from '../shared/vault.ts';
 import { GIF } from './gif.js';
 import { MusicPlayer } from './music.js';
 const $ = id => document.getElementById(id);
@@ -242,6 +242,7 @@ const P = painter($('board'));
 const G = { queue: null, face: 'U', gAng: [], cAng: [], blinkAt: 0, frames: [], lastCap: 0, endAt: 0, result: null, drawn: {}, aim: false, barks: [], pebbleFx: null, L: null, key: '', label: '', next: null, V: null, s: null, prev: null, anim: 1, a0: 0, moves: 0, over: null, best: 0, owner: null };
 function play(L, key, label, next, owner) {
   Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1 });
+  for (const f of G.frames || []) f.bmp?.close?.();
   G.log = []; G.queue = null; G.face = 'U'; G.gAng = []; G.cAng = []; FX.parts = []; FX.shake = FX.flash = FX.punch = null; G.downAt = {}; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
   G.best = (solve(G.V) || []).length;
   G.ghost = loadGhost(key, G.V);
@@ -560,7 +561,8 @@ function renderHome() {
     $('mine').querySelector('h3').textContent = mine.name;
     $('mine-play').onclick = () => play(mine.level, 'test', 'Your vault');
   } else {
-    $('mine').innerHTML = `<div class="sub">Tonight’s parts: <b>${partsLine()}</b>. Build a vault that catches people. You get one a night.</div><div class="row"><button class="primary" id="go-build" type="button">Build tonight’s vault</button></div>`;
+    const th = themeFor(dayNo);
+    $('mine').innerHTML = `<div class="sub">${th ? `<b class="theme">Tonight is ${th.name}.</b> ${th.line} ` : ''}Tonight’s parts: <b>${partsLine()}</b>. Build a vault that catches people. You get one a night.</div><div class="row"><button class="primary" id="go-build" type="button">Build tonight’s vault</button></div>`;
     $('go-build').onclick = () => show('build');
   }
   renderVaultOfTheNight();
@@ -788,7 +790,7 @@ function openBuilder() {
 }
 function renderBuilder() {
   const d = B.d, used = { wall: wallsUsed(), guard: d.guards.length, laser: d.lasers.length, cam: d.cams.length };
-  $('b-night').textContent = 'Night ' + (dayNo + 1);
+  const th = themeFor(dayNo); $('b-night').textContent = th ? th.name : 'Night ' + (dayNo + 1);
   const tools = [['wall', 'Wall', 'var(--wall)'], ['guard', 'Guard', 'var(--guard)'], ['laser', 'Laser', 'var(--laser)'], ['cam', 'Camera', 'var(--cam)'], ['gem', 'Move gem', 'var(--gem)'], ['erase', 'Erase', 'var(--muted)']];
   $('parts').innerHTML = tools.filter(([k]) => !(k in PARTS) || PARTS[k] > 0).map(([k, l, c]) => `<button type="button" data-k="${k}" class="${B.tool === k ? 'on' : ''}"><span><i style="--c:${c}"></i>${l}</span><span class="c">${k in PARTS ? `${PARTS[k] - used[k]} left` : '&nbsp;'}</span></button>`).join('');
   $('parts').querySelectorAll('button').forEach(b => b.onclick = () => { B.tool = b.dataset.k; B.routing = null; B.sel = null; renderBuilder(); });
@@ -875,13 +877,17 @@ function paintTile(x, y) {
   const k = x + ',' + y; if (paint.seen.has(k)) return; paint.seen.add(k);
   const occ = occupant(x, y), isWall = occ?.kind === 'wall';
   if (B.tool === 'wall' && (paint.adding ? occ : !isWall)) return;
+  if (B.tool === 'wall' && paint.adding && wallsUsed() >= PARTS.wall) { if (!paint.warned) { paint.warned = true; toast('No walls left in tonight’s box.'); } return; }
   if (B.tool === 'erase' && (!occ || occ.kind === 'gem')) return;
   tapWithFeedback(x, y);
 }
 $('bboard').addEventListener('pointerdown', e => {
   const t = tileAt(e); if (!t) return;
   sfx.wake();
-  if ((B.tool === 'wall' || B.tool === 'erase') && B.routing == null) {
+  const occ = occupant(...t);
+  // tapping a guard, laser or camera selects it, whatever tool is active
+  const selecting = B.tool === 'wall' && occ && occ.kind !== 'wall';
+  if ((B.tool === 'wall' || B.tool === 'erase') && B.routing == null && !selecting) {
     try { $('bboard').setPointerCapture(e.pointerId); } catch {}
     paint = { seen: new Set(), adding: B.tool === 'wall' && occupant(...t)?.kind !== 'wall' };
     B.painting = true; paintTile(...t);
@@ -998,6 +1004,11 @@ async function copyResult(cls) {
   try { await navigator.clipboard.writeText(text); toast('Copied. Paste it in the comments.'); } catch { toast(text); }
 }
 function toast(t) { showToast(t); }
+// How to play: a card with every rule, open any time from the ? button in the header.
+$('help').onclick = () => { sfx.wake(); $('howto').hidden = false; $('howto-close').focus(); };
+$('howto-close').onclick = () => { $('howto').hidden = true; $('help').focus(); };
+$('howto').onclick = e => { if (e.target === $('howto')) $('howto').hidden = true; };
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('howto').hidden) { $('howto').hidden = true; $('help').focus(); } });
 
 // ---------- your run as a GIF comment ----------
 // While something moves on the board, keep small copies of it (thinking time is skipped).

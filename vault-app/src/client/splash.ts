@@ -1,6 +1,6 @@
 import {requestExpandedMode} from '@devvit/web/client'
 import {Endpoint, type InitRsp, type PlayerVault} from '../shared/api.ts'
-import {deadliness, nightOf} from '../shared/vault.ts'
+import {deadliness, nightOf, themeFor} from '../shared/vault.ts'
 
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement
 const nightEl = document.getElementById('night') as HTMLElement
@@ -16,7 +16,8 @@ async function loadStats(): Promise<void> {
     })
     if (!rsp.ok) return
     const init: InitRsp = await rsp.json()
-    nightEl.textContent = `Night ${init.night + 1}`
+    const theme = themeFor(init.night)
+    nightEl.textContent = `Night ${init.night + 1}${theme ? ` · ${theme.name}` : ''}`
     const built = init.others.length + (init.mine ? 1 : 0)
     const caught = [
       ...Object.values(init.house),

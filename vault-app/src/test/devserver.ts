@@ -33,6 +33,12 @@ r.hIncrBy = async (k: string, f: string, n: number) => {
   return v
 }
 r.hLen = async (k: string) => h(k).size
+const strings = new Map<string, string>()
+r.get = async (k: string) => strings.get(k)
+r.set = async (k: string, v: string) => {
+  strings.set(k, v)
+  return 'OK'
+}
 r.zRem = async (k: string, members: string[]) => {
   for (const m of members) zsets.get(k)?.delete(m)
   return members.length

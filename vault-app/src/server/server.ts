@@ -1,7 +1,7 @@
 import {once} from 'node:events'
 import type {IncomingMessage, ServerResponse} from 'node:http'
 import {RichTextBuilder} from '@devvit/shared-types/richtext/RichTextBuilder.js'
-import {context, media, reddit} from '@devvit/web/server'
+import {context, media, reddit, redis} from '@devvit/web/server'
 import type {
   PartialJsonValue,
   TriggerResponse,
@@ -122,14 +122,23 @@ async function route(
 
 const tonight = () => nightOf(Date.now())
 
-/** Whether the current user moderates this subreddit. */
+/** Whether the current user moderates this subreddit. Cached for ten minutes so a page load isn't an extra API call. */
 async function isModerator(): Promise<boolean> {
   const subredditName = context.subredditName
   const username = await reddit.getCurrentUsername().catch(() => undefined)
   if (!subredditName || !username) return false
+  const key = `mod:${subredditName}:${username.toLowerCase()}`
+  const cached = await redis.get(key).catch(() => undefined)
+  if (cached === '1' || cached === '0') return cached === '1'
   try {
     const mods = await reddit.getModerators({subredditName, username}).all()
-    return mods.some(m => m.username.toLowerCase() === username.toLowerCase())
+    const yes = mods.some(
+      m => m.username.toLowerCase() === username.toLowerCase(),
+    )
+    await redis
+      .set(key, yes ? '1' : '0', {expiration: new Date(Date.now() + 600_000)})
+      .catch(() => undefined)
+    return yes
   } catch {
     return false
   }
