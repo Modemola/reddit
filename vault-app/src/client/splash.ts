@@ -28,7 +28,10 @@ async function loadStats(): Promise<void> {
       parts.push(`${built} ${built === 1 ? 'vault' : 'vaults'} built tonight`)
     if (caught)
       parts.push(`${caught} ${caught === 1 ? 'thief' : 'thieves'} caught`)
-    statsEl.textContent = parts.join(' · ')
+    // an empty night is an invitation, not a blank line
+    statsEl.textContent = parts.length
+      ? parts.join(' · ')
+      : 'No vaults built yet. Be the first.'
     // the deadliest player vault tonight, if any has caught someone
     const top = [init.mine, ...init.others]
       .filter(
@@ -69,7 +72,10 @@ function drawScene(now: number): void {
   const phase = still ? 0.3 : (now / 9000) % 1
   const dir = phase < 0.5 ? 1 : -1
   const x = w / 2 + span * Math.sin(phase * Math.PI * 2 - Math.PI / 2) * -1
-  const y = h - s * 1.3
+  // walk below the button when the card is short, so the guard never crosses it
+  const btn = startBtn.getBoundingClientRect()
+  const top = scene.getBoundingClientRect().top
+  const y = Math.min(h - s * 0.55, Math.max(h - s * 1.3, btn.bottom - top + s * 0.85))
   const ang = dir > 0 ? 0 : Math.PI
   const sweep = still ? 0 : Math.sin(now / 1300) * 0.35
   // the torch beam

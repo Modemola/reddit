@@ -4,10 +4,19 @@
   "post": {
     "entrypoints": {
       "default": {
-        "entry": "splash.html"
+        "entry": "splash.html",
+        "height": "tall",
+        "styles": {
+          "backgroundColor": "#0F1116FF",
+          "backgroundColorDark": "#0F1116FF"
+        }
       },
       "game": {
-        "entry": "game.html"
+        "entry": "game.html",
+        "styles": {
+          "backgroundColor": "#0F1116FF",
+          "backgroundColorDark": "#0F1116FF"
+        }
       }
     }
   },
