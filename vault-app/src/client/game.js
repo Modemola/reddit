@@ -1138,9 +1138,11 @@ const sfx = {
         this.out = this.ac.createGain(); this.out.gain.value = soundOn ? 1 : 0; this.out.connect(this.ac.destination);
         const n = this.ac.createBuffer(1, this.ac.sampleRate, this.ac.sampleRate), d = n.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
         music.attach(new MusicPlayer(this.ac, this.out, n));
+        if (!soundOn) this.ac.suspend?.(); // muted last visit: don't start the clock at all
       } catch {}
     }
-    this.ac?.resume?.();
+    // a muted or hidden game keeps its audio clock stopped (no work, no battery)
+    if (soundOn && !document.hidden) this.ac?.resume?.();
   },
   tone(f, d, type = 'sine', v = 0.12, f2) {
     const a = this.ac; if (!a) return; const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
@@ -1178,8 +1180,18 @@ const music = {
   setMood(m) { this.mood = m; try { this.p?.setMood(m); } catch {} },
   sting(k) { try { this.p?.sting(k); } catch {} },
 };
-function renderSound() { $('snd').textContent = soundOn ? 'Sound on' : 'Sound off'; }
-$('snd').onclick = () => { soundOn = !soundOn; try { localStorage.setItem('vault:sound', soundOn ? 'on' : 'off'); } catch {} sfx.wake(); if (sfx.out) sfx.out.gain.setTargetAtTime(soundOn ? 1 : 0, sfx.ac.currentTime, 0.05); renderSound(); };
+function renderSound() { const b = $('snd'); b.textContent = soundOn ? 'Sound on' : 'Sound off'; b.setAttribute('aria-pressed', String(soundOn)); b.title = soundOn ? 'Tap to mute' : 'Tap to turn sound on'; }
+$('snd').onclick = () => {
+  soundOn = !soundOn; try { localStorage.setItem('vault:sound', soundOn ? 'on' : 'off'); } catch {}
+  sfx.wake(); if (sfx.out) sfx.out.gain.setTargetAtTime(soundOn ? 1 : 0, sfx.ac.currentTime, 0.05);
+  if (!soundOn && sfx.ac) setTimeout(() => { if (!soundOn) sfx.ac.suspend?.(); }, 250); // after the fade
+  renderSound();
+};
+// scrolled away, app in the background, phone locked: the music stops, and picks up again on return
+document.addEventListener('visibilitychange', () => {
+  if (!sfx.ac) return;
+  if (document.hidden) sfx.ac.suspend?.(); else if (soundOn) sfx.ac.resume?.();
+});
 addEventListener('pointerdown', () => sfx.wake(), { once: true });
 renderSound();
 
