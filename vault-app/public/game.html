@@ -351,6 +351,37 @@
     .jobs button b {
       font: 700 1.1rem var(--display);
     }
+    /* "cracked" has to fit a sixth of a small phone */
+    .jobs button {
+      font-size: clamp(0.62rem, 2.5vw, 0.8rem);
+      min-width: 0;
+    }
+    header .tools {
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 12px;
+    }
+    #help {
+      padding: 8px 13px;
+      font-size: 0.9rem;
+    }
+    #snd {
+      padding: 8px 12px;
+      font-size: 0.8rem;
+    }
+    /* small phones: keep the header on one line so the board stays high */
+    @media (max-width: 370px) {
+      header .tools {
+        gap: 6px;
+      }
+      .mark {
+        font-size: 1.2rem;
+        letter-spacing: 0.16em;
+      }
+      #snd {
+        padding: 8px 9px;
+      }
+    }
     .list {
       display: flex;
       flex-direction: column;
@@ -902,6 +933,10 @@
         max-width: 560px;
         margin-inline: auto;
       }
+      /* on the home screen the header lines up with the single column */
+      body > .app:has(> #v-home:not([hidden])) {
+        max-width: 560px;
+      }
       #v-play,
       #v-build {
         max-width: none;
@@ -938,29 +973,21 @@
           class="mark"
           id="home-link"
           type="button"
-          aria-label="Back to tonight’s job"
+          aria-label="Back to the home screen"
         >
           VAU<span>L</span>T
         </button>
-        <div class="row" style="align-items:center;gap:12px">
+        <div class="row tools">
           <div class="night" id="night"></div>
           <button
             class="ghost"
             id="help"
             type="button"
             aria-label="How to play"
-            style="padding:8px 13px;font-size:0.9rem"
           >
             ?
           </button>
-          <button
-            class="ghost"
-            id="snd"
-            type="button"
-            style="padding:8px 12px;font-size:0.8rem"
-          >
-            Sound on
-          </button>
+          <button class="ghost" id="snd" type="button">Sound on</button>
         </div>
       </header>
 

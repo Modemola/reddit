@@ -654,10 +654,12 @@ function hash(n) { n = Math.sin(n * 127.1 + 311.7) * 43758.5453; return n - Math
 let PARTS = partsFor(dayNo);
 const PART_NAMES = { wall: ['wall', 'walls'], guard: ['guard', 'guards'], laser: ['laser', 'lasers'], cam: ['camera', 'cameras'] };
 const partsLine = () => Object.entries(PARTS).filter(([, n]) => n).map(([k, n]) => `${n} ${PART_NAMES[k][n === 1 ? 0 : 1]}`).join(', ');
-const NAMES = ['The Velvet Box', 'Glass Hours', 'The Night Ledger', 'Copper Lung', 'Quiet Room', 'The Long Hall', 'Moth Box', 'The Counting House', 'Low Tide', 'The Lantern'];
+const NAMES = ['The Velvet Box', 'Glass Hours', 'The Night Ledger', 'Copper Lung', 'Quiet Room', 'The Long Hall', 'Moth Box', 'The Counting House', 'Low Tide', 'The Lantern', 'Dead Drop', 'The Cold Room', 'Silver Spoon', 'The Back Office', 'Night Shift', 'The Strongroom', 'Brass Monkey', 'The Pawnshop', 'Glasshouse', 'The Undercroft', 'Paper Moon', 'The Lockbox', 'Hush Money', 'The Gilded Cage'];
+// a fresh draft gets a random name nobody has used tonight
+const freshName = () => { const used = new Set((INIT?.others || []).map(o => o.name)); const free = NAMES.filter(n => !used.has(n)); const pool = free.length ? free : NAMES; return pool[Math.floor(Math.random() * pool.length)]; };
 const B = { hist: [], painting: false, d: null, tool: 'wall', sel: null, routing: null, verdict: null, best: 0 };
 const BP = painter($('bboard'));
-function blankDraft() { return { walls: [], gem: [3, 1], guards: [], lasers: [], cams: [], name: NAMES[Math.floor(hash(dayNo + 0.5) * NAMES.length)] }; }
+function blankDraft() { return { walls: [], gem: [3, 1], guards: [], lasers: [], cams: [], name: freshName() }; }
 function loadDraft() { try { const v = JSON.parse(localStorage.getItem('vault:draft:' + dayNo) || 'null'); if (v && v.walls) return v; } catch {} return blankDraft(); }
 function saveDraft() { try { localStorage.setItem('vault:draft:' + dayNo, JSON.stringify(B.d)); } catch {} }
 function draftToLevel(d) {
