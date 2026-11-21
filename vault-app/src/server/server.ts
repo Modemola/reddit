@@ -161,8 +161,13 @@ async function routeRemove(
   return {removed: true}
 }
 
-async function playerVaults(night: number): Promise<PlayerVault[]> {
+async function playerVaults(
+  night: number,
+  userId: string | null,
+): Promise<PlayerVault[]> {
   const owners = await nightOwners(night)
+  // your own vault is always on your home screen, however busy the night is
+  if (userId && !owners.includes(userId)) owners.push(userId)
   const vaults = await Promise.all(
     owners.map(async owner => {
       const v = await getVault(playerKey(owner, night))
@@ -179,7 +184,7 @@ async function routeInit(): Promise<InitRsp> {
     reddit.getCurrentUsername().catch(() => undefined),
     userId ? getProgress(userId) : Promise.resolve({}),
     Promise.all(HOUSE.map((_, i) => getStats(houseKey(i)))),
-    playerVaults(night),
+    playerVaults(night, userId),
     userId
       ? getStreak(userId, night)
       : Promise.resolve({count: 0, best: 0, tonight: false}),

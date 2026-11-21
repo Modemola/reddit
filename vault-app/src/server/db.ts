@@ -1,6 +1,7 @@
 // Redis layout
 //   vault:{key}        hash  owner, author, name, level (JSON), best     a player's vault for one night
 //   night:{n}:vaults   zset  owner -> publish time                       who built a vault that night
+//   night:{n}:deadly   zset  owner -> deadliness                         the same vaults, deadliest first
 //   stats:{key}        hash  tries, caught, cracked                      public numbers for any vault
 //   people:{key}       hash  userId -> 1                                 who has tried it
 //   marks:{key}        hash  tile index -> count                         where people were caught
@@ -14,6 +15,7 @@ import type {
   VaultStats,
 } from '../shared/api.ts'
 import type {Level} from '../shared/engine.ts'
+import {deadliness} from '../shared/vault.ts'
 
 export async function getStats(key: string): Promise<VaultStats> {
   const [s, people, marks] = await Promise.all([
@@ -90,6 +92,17 @@ export async function recordAttempt(
     } else {
       await redis.hIncrBy(`stats:${key}`, 'cracked', 1)
     }
+    const [, owner, night] = /^p_(.+)_(\d+)$/.exec(key) ?? []
+    if (owner && night) {
+      const [s, people] = await Promise.all([
+        redis.hGetAll(`stats:${key}`),
+        redis.hLen(`people:${key}`),
+      ])
+      await redis.zAdd(`night:${night}:deadly`, {
+        member: owner,
+        score: deadliness({people, cracked: Number(s.cracked ?? 0)}),
+      })
+    }
   }
   return next
 }
@@ -131,18 +144,26 @@ export async function saveVault(
     member: vault.owner,
     score: Date.now(),
   })
+  await redis.zAdd(`night:${night}:deadly`, {member: vault.owner, score: 0})
   return true
 }
 
+/**
+ * Whose vaults tonight's list shows: the deadliest and the newest (so a fresh vault
+ * gets a chance to be played), never more than a page, deadliest first.
+ */
 export async function nightOwners(
   night: number,
-  limit = 60,
+  deadliest = 40,
+  newest = 20,
 ): Promise<string[]> {
-  const rows = await redis.zRange(`night:${night}:vaults`, 0, limit - 1, {
-    by: 'rank',
-    reverse: true,
-  })
-  return rows.map(r => r.member)
+  const top = (zset: string, n: number) =>
+    redis.zRange(zset, 0, n - 1, {by: 'rank', reverse: true})
+  const [deadly, fresh] = await Promise.all([
+    top(`night:${night}:deadly`, deadliest),
+    top(`night:${night}:vaults`, newest),
+  ])
+  return [...new Set([...deadly, ...fresh].map(r => r.member))]
 }
 
 /** One shared comment per player per vault. Returns false if they already shared this one. */
@@ -208,4 +229,5 @@ export async function removeVault(
 ): Promise<void> {
   await redis.hSet(`vault:${key}`, {removed: String(Date.now())})
   await redis.zRem(`night:${night}:vaults`, [owner])
+  await redis.zRem(`night:${night}:deadly`, [owner])
 }

@@ -18,12 +18,13 @@ import {
   type RemoveRsp,
   type ShareRsp,
 } from '../shared/api.ts'
-import {type Level, parse, solve} from '../shared/engine.ts'
+import {type Level, type Move, parse, replay, solve} from '../shared/engine.ts'
 import {
   deadliness,
   HOUSE,
   nightOf,
   partsFor,
+  playerKey,
   themeFor,
 } from '../shared/vault.ts'
 import {STAT_TRIES} from './db.ts'
@@ -69,9 +70,11 @@ const fake = {
     for (const m of members) zsets.get(k)?.delete(m)
     return members.length
   },
-  zRange: async (k: string) =>
+  // always highest score first, as the server asks for it (reverse by rank)
+  zRange: async (k: string, start = 0, stop = -1) =>
     [...(zsets.get(k) ?? new Map()).entries()]
       .sort((a, b) => b[1] - a[1])
+      .slice(start, stop < 0 ? undefined : stop + 1)
       .map(([member, score]) => ({member, score})),
 }
 const posts: string[] = []
@@ -284,6 +287,41 @@ const vault = (name = 'Moth Box'): Level => {
     cams: [{at: [5, 5], dirs: ['U', 'D']}],
   }
 }
+
+test('a busy night: your own vault and the deadliest vaults stay listed however many are built', async () => {
+  const n = 65
+  for (let i = 0; i < n; i++) {
+    const r = await post<PublishRsp>(
+      Endpoint.Publish,
+      {level: vault(`V${i}`)},
+      `t2_b${i}`,
+    )
+    assert.equal(r.status, 200)
+  }
+  // a losing run on the second-oldest vault makes it the deadliest of the night
+  const V = parse(vault())
+  let lose: Move[] = []
+  for (let w = 0; w < 6 && !lose.length; w++)
+    for (let k = 1; k < 10 && !lose.length; k++) {
+      const m = [...Array<Move>(w).fill('W'), ...Array<Move>(k).fill('U')]
+      if (replay(V, m).state.status === 'caught') lose = m
+    }
+  assert.ok(lose.length, 'tonight’s test vault can be lost')
+  const night = nightOf(Date.now())
+  await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: playerKey('t2_b1', night), moves: lose},
+    't2_hunter',
+  )
+  const init = await get<InitRsp>(Endpoint.Init, 't2_b0')
+  assert.equal(init.mine?.owner, 't2_b0')
+  assert.ok(init.others.length <= 60)
+  assert.equal(init.others[0]?.owner, 't2_b1')
+  assert.ok(
+    init.others.some(v => v.owner === 't2_b64'),
+    'the newest is listed',
+  )
+})
 
 test('publishing: one solvable vault per player per night, and others can crack it', async () => {
   const pub = await post<PublishRsp>(Endpoint.Publish, {level: vault()})
