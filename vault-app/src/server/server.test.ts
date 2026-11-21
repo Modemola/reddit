@@ -19,7 +19,13 @@ import {
   type ShareRsp,
 } from '../shared/api.ts'
 import {type Level, parse, solve} from '../shared/engine.ts'
-import {deadliness, HOUSE, nightOf, partsFor} from '../shared/vault.ts'
+import {
+  deadliness,
+  HOUSE,
+  nightOf,
+  partsFor,
+  themeFor,
+} from '../shared/vault.ts'
 import {STAT_TRIES} from './db.ts'
 import {onReq} from './server.ts'
 
@@ -68,6 +74,7 @@ const fake = {
       .sort((a, b) => b[1] - a[1])
       .map(([member, score]) => ({member, score})),
 }
+const posts: string[] = []
 const saved: Record<string, unknown> = {}
 let currentUser = 'tester'
 
@@ -99,6 +106,10 @@ before(async () => {
       ReturnType<typeof reddit.submitComment>
     >
   }
+  reddit.submitCustomPost = (async (opts: {title: string}) => {
+    posts.push(opts.title)
+    return {url: 'https://reddit.com/r/vaulttest/comments/2/'}
+  }) as unknown as typeof reddit.submitCustomPost
   server = createServer(async (req, rsp) => {
     const user = String(req.headers['x-test-user'] ?? 't2_alice')
     currentUser = user === 't2_mod' ? 'the_mod' : 'tester'
@@ -211,6 +222,17 @@ test('one player cannot paint a vault red: busts past the cap or after a crack d
   )
   assert.equal(after.json.stats.caught, STAT_TRIES)
   assert.equal(after.json.stats.people, 1)
+})
+
+test('the install and the nightly job together make one post a night; its title names tonight', async () => {
+  posts.length = 0
+  await post(Endpoint.OnAppInstall, {})
+  await post(Endpoint.OnNewNight, {})
+  assert.equal(posts.length, 1)
+  const night = nightOf(Date.now())
+  assert.match(posts[0]!, new RegExp(`^VAULT, Night ${night + 1}: `))
+  const theme = themeFor(night)
+  if (theme) assert.ok(posts[0]!.includes(theme.name))
 })
 
 // A crackable test vault built from whatever tonight's parts are, so the tests pass on any date.

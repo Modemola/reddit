@@ -31,6 +31,7 @@ import {
   nightOf,
   partsFor,
   playerKey,
+  themeFor,
   W,
 } from '../shared/vault.ts'
 import {
@@ -105,7 +106,9 @@ async function route(
         break
       case Endpoint.OnAppInstall:
       case Endpoint.OnNewNight:
-        await createNightPost()
+        // automatic posts: at most one per night, even if the install and the nightly job overlap
+        if (await redis.hSetNX('nightposts', String(tonight()), '1'))
+          await createNightPost()
         rsp = {}
         break
       default:
@@ -400,8 +403,11 @@ async function routeShare(
 
 async function createNightPost() {
   const night = tonight()
+  const theme = themeFor(night)
   return reddit.submitCustomPost({
-    title: `VAULT, Night ${night + 1}: crack tonight’s vaults, then build one that catches people`,
+    title: theme
+      ? `VAULT, Night ${night + 1}: it’s ${theme.name}. Crack tonight’s vaults, then build one that catches everyone`
+      : `VAULT, Night ${night + 1}: crack tonight’s vaults, then build one that catches everyone`,
   })
 }
 
