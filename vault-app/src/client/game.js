@@ -233,7 +233,11 @@ const parseL = L => parse(L);
 
 // ---------- views ----------
 let view = 'home';
-function show(v) { view = v; if (v !== 'play') music.play(v === 'home' ? 'title' : null); for (const k of ['home', 'play', 'build']) $('v-' + k).hidden = k !== v; if (v === 'home') renderHome(); if (v === 'build') openBuilder(); window.scrollTo(0, 0); }
+// a new night started while the game was open: tonight's parts and vaults are different, so start fresh
+function rolledOver() { return INIT && nightOf(Date.now()) !== dayNo; }
+function show(v) {
+  if (v !== 'play' && rolledOver()) { toast('A new night has started. Loading tonight’s vaults…'); setTimeout(() => location.reload(), 900); return; }
+  view = v; if (v !== 'play') music.play(v === 'home' ? 'title' : null); for (const k of ['home', 'play', 'build']) $('v-' + k).hidden = k !== v; if (v === 'home') renderHome(); if (v === 'build') openBuilder(); window.scrollTo(0, 0); }
 $('home-link').onclick = () => show('home');
 $('home-link').onkeydown = e => { if (e.key === 'Enter') show('home'); };
 
@@ -956,6 +960,7 @@ $('b-surprise').onclick = () => surprise();
 $('b-clear').onclick = () => { const n = B.d.name; B.d = blankDraft(); B.d.name = n; B.sel = null; B.routing = null; changed(); };
 $('b-test').onclick = () => { if (B.verdict === 'ok') { sfx.wake(); play({ ...B.level, name: B.level.name }, 'test', 'Test run'); } };
 $('b-lock').onclick = async () => {
+  if (rolledOver()) { show('home'); return; } // yesterday's parts can't be published tonight
   if (B.verdict !== 'ok' || myBuilt()) return;
   const level = { ...B.level, name: (B.d.name || '').trim() || B.level.name };
   $('b-lock').disabled = true;
