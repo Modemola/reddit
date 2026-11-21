@@ -665,9 +665,9 @@ function hash(n) { n = Math.sin(n * 127.1 + 311.7) * 43758.5453; return n - Math
 let PARTS = partsFor(dayNo);
 const PART_NAMES = { wall: ['wall', 'walls'], guard: ['guard', 'guards'], laser: ['laser', 'lasers'], cam: ['camera', 'cameras'] };
 const partsLine = () => Object.entries(PARTS).filter(([, n]) => n).map(([k, n]) => `${n} ${PART_NAMES[k][n === 1 ? 0 : 1]}`).join(', ');
-const NAMES = ['The Velvet Box', 'Glass Hours', 'The Night Ledger', 'Copper Lung', 'Quiet Room', 'The Long Hall', 'Moth Box', 'The Counting House', 'Low Tide', 'The Lantern', 'Dead Drop', 'The Cold Room', 'Silver Spoon', 'The Back Office', 'Night Shift', 'The Strongroom', 'Brass Monkey', 'The Pawnshop', 'Glasshouse', 'The Undercroft', 'Paper Moon', 'The Lockbox', 'Hush Money', 'The Gilded Cage'];
+const NAMES = ['The Velvet Box', 'Glass Hours', 'The Night Ledger', 'Copper Lung', 'Quiet Room', 'The Long Hall', 'Moth Box', 'The Counting House', 'Low Tide', 'The Lantern', 'Dead Drop', 'The Cold Room', 'Silver Spoon', 'The Back Office', 'Graveyard Shift', 'The Strongroom', 'Brass Monkey', 'The Pawnshop', 'Glasshouse', 'The Undercroft', 'Paper Moon', 'The Lockbox', 'Hush Money', 'The Gilded Cage'];
 // a fresh draft gets a random name nobody has used tonight
-const freshName = () => { const used = new Set((INIT?.others || []).map(o => o.name)); const free = NAMES.filter(n => !used.has(n)); const pool = free.length ? free : NAMES; return pool[Math.floor(Math.random() * pool.length)]; };
+const freshName = () => { const used = new Set([...LEVELS, ...(INIT?.others || [])].map(o => o.name)); const free = NAMES.filter(n => !used.has(n)); const pool = free.length ? free : NAMES; return pool[Math.floor(Math.random() * pool.length)]; };
 const B = { hist: [], painting: false, d: null, tool: 'wall', sel: null, routing: null, verdict: null, best: 0 };
 const BP = painter($('bboard'));
 function blankDraft() { return { walls: [], gem: [3, 1], guards: [], lasers: [], cams: [], name: freshName() }; }
@@ -1024,7 +1024,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('howto').hidden)
 
 // ---------- your run as a GIF comment ----------
 // While something moves on the board, keep small copies of it (thinking time is skipped).
-const CAP_W = 180;
+const CAP_W = 270; // wide enough to read in a Reddit comment
 function capture(now) {
   const moving = G.anim < 1 || G.pebbleFx || G.barks.some(b => now >= b.t0) || (G.endAt && now - G.endAt < 1100);
   const first = !G.frames.length;
@@ -1040,15 +1040,15 @@ function capture(now) {
 function gifDataUrl() {
   let fr = G.frames.filter(f => f.bmp);
   if (fr.length < 2) return null;
-  const w = CAP_W, h = fr[0].h, bar = 26, H = h + bar, res = G.result || { status: 'play', moves: G.moves };
+  const w = CAP_W, h = fr[0].h, bar = 36, H = h + bar, res = G.result || { status: 'play', moves: G.moves };
   const text = `VAULT · ${G.L.name} · ${res.status === 'won' ? `cracked in ${res.moves}` : `caught on move ${res.moves}`}`;
   const c = document.createElement('canvas'); c.width = w; c.height = H; const x = c.getContext('2d', { willReadFrequently: true });
   for (let tries = 0; tries < 4; tries++) {
     const frames = fr.map((f, i) => {
       x.fillStyle = C.night; x.fillRect(0, 0, w, H);
       x.drawImage(f.bmp, 0, 0, w, h);
-      x.fillStyle = res.status === 'caught' ? C.laser : C.gem; x.fillRect(0, h, w, 2);
-      x.fillStyle = C.text; x.font = `600 11px ${css('--body')}`; x.textAlign = 'center'; x.fillText(text, w / 2, h + 17, w - 10);
+      x.fillStyle = res.status === 'caught' ? C.laser : C.gem; x.fillRect(0, h, w, 3);
+      x.fillStyle = C.text; x.font = `600 15px ${css('--body')}`; x.textAlign = 'center'; x.fillText(text, w / 2, h + 24, w - 14);
       return { rgba: x.getImageData(0, 0, w, H).data, delay: i === fr.length - 1 ? 1600 : f.delay };
     });
     const bytes = GIF.encode(frames, w, H);
@@ -1061,9 +1061,12 @@ function gifDataUrl() {
 }
 const shared = new Set();
 async function shareRun(btn) {
-  btn.disabled = true; btn.textContent = 'Posting…';
+  btn.disabled = true; btn.textContent = 'Making your GIF…';
+  // let the label paint before the encoder holds the main thread for a moment
+  await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
   try {
     let gif = null; try { gif = gifDataUrl(); } catch {}
+    btn.textContent = 'Posting…';
     const rsp = await api(Endpoint.Share, { key: G.key, moves: G.log.slice(), gif });
     shared.add(G.key);
     btn.textContent = 'Posted to the comments';

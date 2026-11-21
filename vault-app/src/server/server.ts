@@ -413,10 +413,19 @@ async function routeMenuNewPost(): Promise<UiResponse> {
   }
 }
 
+/** The largest request body read: a shared GIF plus its moves, with room to spare. */
+const MAX_BODY = MAX_GIF_CHARS + 64_000
+
 async function readJson<T>(reqMsg: IncomingMessage): Promise<T> {
   const chunks: Uint8Array[] = []
-  reqMsg.on('data', chunk => chunks.push(chunk))
+  let size = 0
+  reqMsg.on('data', (chunk: Uint8Array) => {
+    size += chunk.length
+    if (size <= MAX_BODY) chunks.push(chunk)
+  })
   await once(reqMsg, 'end')
+  // an oversized body reads as nothing, which every route rejects as unreadable
+  if (size > MAX_BODY) return undefined as T
   return JSON.parse(`${Buffer.concat(chunks)}`)
 }
 
