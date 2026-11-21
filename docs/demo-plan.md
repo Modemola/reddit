@@ -14,7 +14,7 @@ Judges open one post, usually on a phone, often without reading anything first. 
 | Time | What they see | What has to be true |
 |---|---|---|
 | 0–5 s | The feed card: VAULT wordmark on brick, “Sneak past guards, lasers and cameras to crack tonight’s vaults. Then build one that catches everyone else.” and a line like “12 vaults built tonight · 87 thieves caught”. | Real activity in the demo subreddit, so those numbers aren’t zero (see section 3). |
-| 5–10 s | They tap **Start tonight’s job** and land in vault 1, playing. A tip on the board says how to move. | First-run start works on Reddit (it does locally). |
+| 5–10 s | They tap **Start the heist** and land in vault 1, playing. A tip just above the board says how to move. | First-run start works on Reddit (it does locally). |
 | 10–40 s | They get caught once, read “A guard spotted you.” and see the guard’s “Got you!”, retry, read the red corners, and crack it. | The Lobby takes most people 2–3 tries. Keep it that way. |
 | 40–60 s | The crack screen offers “Post this crack in the comments”. They see the comments full of other people’s GIFs. | Several real GIF comments already on the demo post. |
 

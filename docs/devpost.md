@@ -39,22 +39,23 @@ Most daily games are one puzzle for everyone, solved alone. We wanted a daily ga
 - A new post every night, automatically, and a night streak for cracking at least one vault every night.
 
 ## Built for a first-time player
-A new player never sees a menu first: they land in the first vault, playing. One-line tips appear on the board at the moment they matter (how to move, what red corners mean, how to knock out a guard, when to throw the pebble), each shown once. The six house vaults then teach the rest.
+A new player never sees a menu first: they land in the first vault, playing. One-line tips appear just above the board at the moment they matter (how to move, what red corners mean, how to knock out a guard, when to throw the pebble), each shown once. The six house vaults then teach the rest.
 
 ## How we built it
 - **Devvit Web**, from Reddit’s bare template: a TypeScript server on Devvit’s Node runtime and a canvas client with no framework.
 - **One rules engine shared by client and server.** It is pure and deterministic, with a breadth-first solver that finds the fewest-moves crack (and proves a vault can be cracked at all).
 - **Fair play by design.** The client sends only its moves. The server replays them with the same engine to decide whether you cracked a vault or got caught, so nobody can fake a crack or pad a vault’s numbers. Player vaults are validated against tonight’s parts and re-solved on the server before they go live.
-- **Redis** stores progress, night streaks, each vault’s caught and cracked counts, and catch marks per tile.
-- **Scheduler** creates the nightly post; an install trigger creates the first one.
+- **Redis** stores progress, night streaks, each vault’s caught and cracked counts, catch marks per tile, and a live deadliness ranking, so tonight’s list stays short and fast however many vaults get built.
+- **Scheduler** creates the nightly post (named after the theme on themed nights); an install trigger creates the first one, and the two never double up.
 - **Media upload and rich-text comments** post the GIF of your run.
+- **Kind to phones.** The audio clock stops when the post is scrolled away or muted, the feed card’s animation pauses off screen, and the board’s light layer is drawn at quarter resolution.
 - **Art and sound made in code.** Oak floors, brick walls and torchlight are drawn procedurally; the night layer is cut by pools of light around each guard’s torch. The adaptive score (a D-minor creep that tightens when danger is next to you, with stings for cracked and caught) and the GIF encoder are written for the game, with no audio or image files. Fonts are bundled (SIL Open Font License).
 - **Tests:** unit tests for the engine and the vault rules, and server tests that run the real routes against an in-memory Redis.
 
 ## Challenges we ran into
 - **Making stealth fair in turns.** Real-time stealth feels unfair on a phone. Turn-based stealth only works if you can read what happens next, so we added next-turn red corners, a guard’s next step, and a flickering beam for a laser about to fire.
 - **Guaranteeing player vaults are beatable.** A level editor is only fun if levels can be finished. The solver had to handle guard routes, laser rhythms, camera sweeps, knockouts and pebble distractions, and still answer instantly while you build.
-- **Trust.** Leaderboards and “caught 37 thieves” only mean something if they can’t be faked, which is why the server replays every run instead of trusting the client.
+- **Trust.** Leaderboards and “caught 37 thieves” only mean something if they can’t be faked, which is why the server replays every run instead of trusting the client. It also caps how much one player can move a vault’s public numbers, so nobody can paint a floor red alone.
 
 ## Accomplishments we’re proud of
 - A level editor where an impossible level simply can’t be published.
@@ -65,7 +66,7 @@ A new player never sees a menu first: they land in the first vault, playing. One
 Players forgive a hard puzzle and never forgive an unfair one. Most of our design time went into making the next turn readable.
 
 ## What’s next
-- Weekly themes for the parts box (an all-laser night, a single-guard night).
+- More themed nights for the parts box (a single-guard night, a camera maze).
 - Flair for the builders of the deadliest vaults.
 - A season leaderboard for perfect runs.
 

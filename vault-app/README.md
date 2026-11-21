@@ -42,7 +42,7 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 
 The **?** button in the header opens a card with every rule, any time.
 
-A new player skips the menu and starts in the first vault. Short tips appear on the board at the moment they matter (how to move, what red corners mean, how to knock out a guard, when to throw the pebble), each shown once.
+A new player skips the menu and starts in the first vault. Short tips appear just above the board at the moment they matter (how to move, what red corners mean, how to knock out a guard, when to throw the pebble), each shown once.
 
 ## Moderation
 
@@ -73,7 +73,7 @@ npm run build && node --experimental-strip-types src/test/devserver.ts 5178
 - `src/shared/engine.ts`: the rules and a breadth-first solver (shared by client and server)
 - `src/shared/vault.ts`: nights, the parts box, house vaults, player vault checks
 - `src/server/`: routes (`api/init`, `api/attempt`, `api/publish`), Redis storage, the nightly post
-- `src/client/game.js`: the game (canvas), the builder and the job sheet; `music.js` is the adaptive score
+- `src/client/game.js`: the game (canvas), the builder and the home screen; `music.js` is the adaptive score
 - `public/`: page shells and bundled fonts (OFL)
 
 Fonts: Chakra Petch, Inter and DM Mono, under the SIL Open Font License (`public/fonts/OFL.txt`).
