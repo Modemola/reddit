@@ -315,3 +315,12 @@ export function bestMoves(l: Level): number {
     return 0
   }
 }
+
+/**
+ * How deadly a vault is, counted in people rather than attempts, so one player busting
+ * the same vault fifty times can't push it up the list. Every crack counts against it.
+ */
+export function deadliness(s: {people: number; cracked: number}): number {
+  const stumped = s.people - s.cracked
+  return stumped - 2 * s.cracked
+}

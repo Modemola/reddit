@@ -3,7 +3,7 @@
 import { showToast } from '@devvit/web/client';
 import { Endpoint } from '../shared/api.ts';
 import { advanceGuards, camDir, DIRS, danger, guardPos, HEARING, laserOn, parse, pebbleTargets, ray, solve, startState, step } from '../shared/engine.ts';
-import { bestMoves, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEEPS, W } from '../shared/vault.ts';
+import { bestMoves, deadliness, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEEPS, W } from '../shared/vault.ts';
 import { GIF } from './gif.js';
 import { MusicPlayer } from './music.js';
 const $ = id => document.getElementById(id);
@@ -347,22 +347,27 @@ function renderHome() {
     $('go-build').onclick = () => show('build');
   }
   renderVaultOfTheNight();
-  const list = (INIT?.others || []).slice().sort((a, b) => (b.stats.caught - b.stats.cracked * 3) - (a.stats.caught - a.stats.cracked * 3));
+  const list = (INIT?.others || []).slice().sort((a, b) => deadliness(b.stats) - deadliness(a.stats));
   $('others-line').innerHTML = crowdStatus !== 'live' ? crowdLine() : list.length ? 'Deadliest first. Each one was built by another player from tonight’s parts.' : 'Nobody else has built a vault tonight yet. Be the first, or check back later.';
   $('others').innerHTML = '';
   for (const b of list) {
     const r = progress[b.key], btn = document.createElement('button'); btn.type = 'button'; btn.className = 'vrow';
     btn.innerHTML = `<span class="n"></span><span class="s"></span><span class="tag ${r?.won ? 'ok' : r?.tries ? 'no' : ''}">${r?.won ? 'cracked' : r?.tries ? 'caught ×' + r.tries : 'new'}</span>`;
     btn.querySelector('.n').textContent = b.name;
-    btn.querySelector('.s').textContent = `by u/${b.author || 'someone'} · caught ${b.stats.caught} · cracked by ${b.stats.cracked}`;
+    btn.querySelector('.s').textContent = `by u/${b.author || 'someone'} · ${stumpedLine(b.stats)}`;
+
     btn.onclick = () => { sfx.wake(); play(b.level, b.key, `By u/${b.author || 'someone'}`, null, b.owner); };
-    $('others').appendChild(btn);
+    if (INIT?.isMod) {
+      // moderators get a Remove button next to the row, never inside it
+      const wrap = document.createElement('div'); wrap.className = 'vrow-wrap';
+      wrap.append(btn, removeButton(b)); $('others').appendChild(wrap);
+    } else $('others').appendChild(btn);
   }
 }
 // The deadliest player vault tonight: most thieves caught, with every crack counting against it.
 function vaultOfTheNight() {
-  const all = [INIT?.mine, ...(INIT?.others || [])].filter(v => v && v.stats.caught > 0);
-  all.sort((a, b) => (b.stats.caught - b.stats.cracked * 3) - (a.stats.caught - a.stats.cracked * 3) || b.stats.caught - a.stats.caught);
+  const all = [INIT?.mine, ...(INIT?.others || [])].filter(v => v && v.stats.people - v.stats.cracked > 0);
+  all.sort((a, b) => deadliness(b.stats) - deadliness(a.stats) || b.stats.caught - a.stats.caught);
   return all[0] || null;
 }
 function renderVaultOfTheNight() {
@@ -372,12 +377,30 @@ function renderVaultOfTheNight() {
   const mine = v.owner === INIT.userId, r = progress[v.key];
   $('votn').innerHTML = `<div class="n"></div><div class="sub"></div><div class="row"></div>`;
   $('votn').querySelector('.n').textContent = v.name;
-  $('votn').querySelector('.sub').innerHTML = `${mine ? 'Yours.' : `By u/${escapeHtml(v.author || 'someone')}.`} Caught <b>${v.stats.caught}</b> ${v.stats.caught === 1 ? 'thief' : 'thieves'}, cracked by <b>${v.stats.cracked}</b>.`;
+  $('votn').querySelector('.sub').innerHTML = `${mine ? 'Yours.' : `By u/${escapeHtml(v.author || 'someone')}.`} Stumped <b>${v.stats.people - v.stats.cracked}</b> of <b>${v.stats.people}</b> ${v.stats.people === 1 ? 'thief' : 'thieves'} so far.`;
   const btn = document.createElement('button'); btn.type = 'button';
   btn.className = mine ? 'ghost' : 'primary';
   btn.textContent = mine ? 'Play your vault' : r?.won ? 'You cracked it. Play again' : 'Try to crack it';
   btn.onclick = () => { sfx.wake(); mine ? play(v.level, 'test', 'Your vault') : play(v.level, v.key, `By u/${v.author || 'someone'}`, null, v.owner); };
   $('votn').querySelector('.row').appendChild(btn);
+  if (INIT?.isMod && !mine) $('votn').querySelector('.row').appendChild(removeButton(v));
+}
+const stumpedLine = s => !s.people ? 'nobody has tried it yet' : `stumped ${s.people - s.cracked} of ${s.people}`;
+// Moderators only: two taps to take a vault off tonight's list.
+function removeButton(v) {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'ghost mod-remove'; b.textContent = 'Remove';
+  let armed = false;
+  b.onclick = async e => {
+    e.stopPropagation();
+    if (!armed) { armed = true; b.textContent = 'Tap again to remove'; setTimeout(() => { armed = false; b.textContent = 'Remove'; }, 4000); return; }
+    b.disabled = true;
+    try {
+      await api(Endpoint.Remove, { key: v.key });
+      INIT.others = INIT.others.filter(o => o.key !== v.key);
+      toast(`Removed “${v.name}”.`); renderHome();
+    } catch (err) { b.disabled = false; toast(err.message); }
+  };
+  return b;
 }
 const escapeHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function crowdLine() { return crowdStatus === 'off' ? 'Tonight’s board could not be loaded. Check your connection and reopen the post.' : 'Loading tonight’s board…'; }

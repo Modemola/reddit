@@ -90,7 +90,7 @@ export async function getVault(
   key: string,
 ): Promise<Omit<PlayerVault, 'stats'> | null> {
   const v = await redis.hGetAll(`vault:${key}`)
-  if (!v.level || !v.owner) return null
+  if (!v.level || !v.owner || v.removed) return null
   try {
     const level: Level = JSON.parse(v.level)
     return {
@@ -190,4 +190,14 @@ export async function rankCrack(
     .filter(([u]) => u !== userId)
     .map(([, v]) => Number(v))
   return {others: others.length, slower: others.filter(v => v > moves).length}
+}
+
+/** Takes a player vault off its night's list and stops it being played. */
+export async function removeVault(
+  key: string,
+  owner: string,
+  night: number,
+): Promise<void> {
+  await redis.hSet(`vault:${key}`, {removed: String(Date.now())})
+  await redis.zRem(`night:${night}:vaults`, [owner])
 }

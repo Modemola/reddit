@@ -40,6 +40,10 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 
 A new player skips the menu and starts in the first vault. Short tips appear on the board at the moment they matter (how to move, what red corners mean, how to knock out a guard, when to throw the pebble), each shown once.
 
+## Moderation
+
+Moderators of the subreddit see a **Remove** button on player vaults (two taps). It takes the vault off tonight’s list and stops it being played. Vault names are limited to 24 characters and shown as plain text.
+
 ## Fair play
 
 The client sends only its moves. The server replays them with the same rules engine to decide whether you cracked a vault or got caught, so nobody can fake a crack or pad a vault’s numbers. Player vaults are validated against tonight’s parts and re-solved on the server before they go live.

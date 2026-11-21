@@ -17,6 +17,8 @@ import {
   type PlayerVault,
   type PublishReq,
   type PublishRsp,
+  type RemoveReq,
+  type RemoveRsp,
   type ShareReq,
   type ShareRsp,
 } from '../shared/api.ts'
@@ -42,6 +44,7 @@ import {
   rankCrack,
   recordAttempt,
   releaseShare,
+  removeVault,
   saveVault,
 } from './db.ts'
 
@@ -50,6 +53,7 @@ type AnyRsp =
   | AttemptRsp
   | PublishRsp
   | ShareRsp
+  | RemoveRsp
   | UiResponse
   | TriggerResponse
   | ErrorRsp
@@ -93,6 +97,9 @@ async function route(
       case Endpoint.Share:
         rsp = await routeShare(reqMsg)
         break
+      case Endpoint.Remove:
+        rsp = await routeRemove(reqMsg)
+        break
       case Endpoint.OnMenuNewPost:
         rsp = await routeMenuNewPost()
         break
@@ -115,6 +122,33 @@ async function route(
 
 const tonight = () => nightOf(Date.now())
 
+/** Whether the current user moderates this subreddit. */
+async function isModerator(): Promise<boolean> {
+  const subredditName = context.subredditName
+  const username = await reddit.getCurrentUsername().catch(() => undefined)
+  if (!subredditName || !username) return false
+  try {
+    const mods = await reddit.getModerators({subredditName, username}).all()
+    return mods.some(m => m.username.toLowerCase() === username.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+async function routeRemove(
+  reqMsg: IncomingMessage,
+): Promise<RemoveRsp | ErrorRsp> {
+  if (!(await isModerator()))
+    return {error: 'Only moderators can remove vaults.', status: 403}
+  const req = await readJson<RemoveReq>(reqMsg)
+  const m = typeof req?.key === 'string' ? /^p_(.+)_(\d+)$/.exec(req.key) : null
+  if (!m) return {error: 'That vault does not exist.', status: 404}
+  const v = await getVault(req.key)
+  if (!v) return {error: 'That vault does not exist.', status: 404}
+  await removeVault(req.key, v.owner, Number(m[2]))
+  return {removed: true}
+}
+
 async function playerVaults(night: number): Promise<PlayerVault[]> {
   const owners = await nightOwners(night)
   const vaults = await Promise.all(
@@ -129,7 +163,7 @@ async function playerVaults(night: number): Promise<PlayerVault[]> {
 async function routeInit(): Promise<InitRsp> {
   const night = tonight()
   const userId = context.userId ?? null
-  const [username, progress, house, vaults, streak] = await Promise.all([
+  const [username, progress, house, vaults, streak, isMod] = await Promise.all([
     reddit.getCurrentUsername().catch(() => undefined),
     userId ? getProgress(userId) : Promise.resolve({}),
     Promise.all(HOUSE.map((_, i) => getStats(houseKey(i)))),
@@ -137,6 +171,7 @@ async function routeInit(): Promise<InitRsp> {
     userId
       ? getStreak(userId, night)
       : Promise.resolve({count: 0, best: 0, tonight: false}),
+    isModerator(),
   ])
   const houseStats: InitRsp['house'] = {}
   house.forEach((s, i) => {
@@ -152,6 +187,7 @@ async function routeInit(): Promise<InitRsp> {
     mine: vaults.find(v => v.owner === userId) ?? null,
     others: vaults.filter(v => v.owner !== userId),
     streak,
+    isMod,
   }
 }
 

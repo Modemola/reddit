@@ -1,6 +1,6 @@
 import {requestExpandedMode} from '@devvit/web/client'
 import {Endpoint, type InitRsp, type PlayerVault} from '../shared/api.ts'
-import {nightOf} from '../shared/vault.ts'
+import {deadliness, nightOf} from '../shared/vault.ts'
 
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement
 const nightEl = document.getElementById('night') as HTMLElement
@@ -29,14 +29,16 @@ async function loadStats(): Promise<void> {
       parts.push(`${caught} ${caught === 1 ? 'thief' : 'thieves'} caught`)
     statsEl.textContent = parts.join(' · ')
     // the deadliest player vault tonight, if any has caught someone
-    const deadliness = (v: PlayerVault) => v.stats.caught - v.stats.cracked * 3
     const top = [init.mine, ...init.others]
-      .filter((v): v is PlayerVault => v !== null && v.stats.caught > 0)
-      .sort((a, b) => deadliness(b) - deadliness(a))[0]
+      .filter(
+        (v): v is PlayerVault =>
+          v !== null && v.stats.people - v.stats.cracked > 0,
+      )
+      .sort((a, b) => deadliness(b.stats) - deadliness(a.stats))[0]
     if (top) {
       const line = document.createElement('div')
       line.className = 'votn'
-      line.textContent = `Vault of the night: ${top.name} by u/${top.author || 'someone'}, caught ${top.stats.caught}`
+      line.textContent = `Vault of the night: ${top.name} by u/${top.author || 'someone'}, stumped ${top.stats.people - top.stats.cracked} of ${top.stats.people}`
       statsEl.after(line)
     }
   } catch {

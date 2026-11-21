@@ -39,6 +39,8 @@ export type InitRsp = {
   mine: PlayerVault | null
   others: PlayerVault[]
   streak: Streak
+  /** True for moderators of this subreddit, who can remove player vaults. */
+  isMod: boolean
 }
 
 /** The client sends only its moves; the server replays them to decide what happened. */
@@ -60,6 +62,10 @@ export type Rank = {others: number; slower: number}
 export type ShareReq = {key: string; moves: Move[]; gif?: string}
 export type ShareRsp = {posted: 'gif' | 'text'; url: string}
 
+/** Moderators only: take a player vault off tonight's list. */
+export type RemoveReq = {key: string}
+export type RemoveRsp = {removed: true}
+
 export type PublishReq = {level: Level}
 export type PublishRsp = {vault: PlayerVault}
 
@@ -69,6 +75,7 @@ export const Endpoint = {
   Attempt: 'api/attempt',
   Publish: 'api/publish',
   Share: 'api/share',
+  Remove: 'api/remove',
   OnAppInstall: 'internal/on/app/install',
   OnMenuNewPost: 'internal/on/menu/new-post',
   OnNewNight: 'internal/on/scheduler/new-night',
@@ -79,6 +86,7 @@ export const EndpointMethod = {
   [Endpoint.Attempt]: 'POST',
   [Endpoint.Publish]: 'POST',
   [Endpoint.Share]: 'POST',
+  [Endpoint.Remove]: 'POST',
   [Endpoint.OnAppInstall]: 'POST',
   [Endpoint.OnMenuNewPost]: 'POST',
   [Endpoint.OnNewNight]: 'POST',

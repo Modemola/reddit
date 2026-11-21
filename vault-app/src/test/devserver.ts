@@ -33,6 +33,10 @@ r.hIncrBy = async (k: string, f: string, n: number) => {
   return v
 }
 r.hLen = async (k: string) => h(k).size
+r.zRem = async (k: string, members: string[]) => {
+  for (const m of members) zsets.get(k)?.delete(m)
+  return members.length
+}
 r.zAdd = async (k: string, ...m: {member: string; score: number}[]) => {
   const z = zsets.get(k) ?? zsets.set(k, new Map()).get(k)!
   for (const x of m) z.set(x.member, x.score)
@@ -42,7 +46,12 @@ r.zRange = async (k: string) =>
   [...(zsets.get(k) ?? new Map()).entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([member, score]) => ({member, score}))
-reddit.getCurrentUsername = async () => 'local_tester'
+let currentName = 'local_tester'
+reddit.getCurrentUsername = async () => currentName
+// the user t2_mod (send header x-test-user: t2_mod) moderates the local subreddit
+reddit.getModerators = (({username}: {username?: string}) => ({
+  all: async () => (username === 'local_mod' ? [{username}] : []),
+})) as unknown as typeof reddit.getModerators
 // Uploads and comments are kept in memory and listed at /local/comments.
 const posted: unknown[] = []
 media.upload = async opts => {
@@ -76,9 +85,11 @@ createServer(async (req, rsp) => {
   }
   if (path.startsWith('/api/')) {
     const user = String(req.headers['x-test-user'] ?? 't2_local')
+    currentName = user === 't2_mod' ? 'local_mod' : 'local_tester'
     await runWithContext(
       {
         appName: 'vault-heist',
+        subredditName: 'vaultlocal',
         postId: 't3_local',
         userId: user,
         username: user,

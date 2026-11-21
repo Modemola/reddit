@@ -15,10 +15,11 @@ import {
   type ErrorRsp,
   type InitRsp,
   type PublishRsp,
+  type RemoveRsp,
   type ShareRsp,
 } from '../shared/api.ts'
 import {type Level, parse, solve} from '../shared/engine.ts'
-import {HOUSE, nightOf, partsFor} from '../shared/vault.ts'
+import {deadliness, HOUSE, nightOf, partsFor} from '../shared/vault.ts'
 import {onReq} from './server.ts'
 
 // A small in-memory stand-in for the Redis calls the server uses.
@@ -51,12 +52,17 @@ const fake = {
     for (const x of m) z.set(x.member, x.score)
     return m.length
   },
+  zRem: async (k: string, members: string[]) => {
+    for (const m of members) zsets.get(k)?.delete(m)
+    return members.length
+  },
   zRange: async (k: string) =>
     [...(zsets.get(k) ?? new Map()).entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([member, score]) => ({member, score})),
 }
 const saved: Record<string, unknown> = {}
+let currentUser = 'tester'
 
 let server: Server
 let url: string
@@ -65,7 +71,10 @@ before(async () => {
     saved[k] = (redis as unknown as Record<string, unknown>)[k]
     ;(redis as unknown as Record<string, unknown>)[k] = fn
   }
-  reddit.getCurrentUsername = async () => 'tester'
+  reddit.getCurrentUsername = async () => currentUser
+  reddit.getModerators = (({username}: {username?: string}) => ({
+    all: async () => (username === 'the_mod' ? [{username: 'the_mod'}] : []),
+  })) as unknown as typeof reddit.getModerators
   media.upload = async opts => {
     if (failUpload) throw Error('upload refused')
     uploads.push(opts.url)
@@ -85,9 +94,11 @@ before(async () => {
   }
   server = createServer(async (req, rsp) => {
     const user = String(req.headers['x-test-user'] ?? 't2_alice')
+    currentUser = user === 't2_mod' ? 'the_mod' : 'tester'
     await runWithContext(
       {
         appName: 'vault-heist',
+        subredditName: 'vaulttest',
         postId: 't3_1',
         userId: user,
         username: user,
@@ -346,4 +357,37 @@ test('a crack is ranked against everyone else who cracked the vault', async () =
     't2_r4',
   )
   assert.equal(bust.json.rank, undefined)
+})
+
+test('moderators can remove a player vault; nobody else can', async () => {
+  const pub = await post<PublishRsp>(
+    Endpoint.Publish,
+    {level: vault('Rude Name')},
+    't2_alice',
+  )
+  const key = pub.json.vault.key
+  assert.equal((await get<InitRsp>(Endpoint.Init, 't2_mod')).isMod, true)
+  assert.equal((await get<InitRsp>(Endpoint.Init, 't2_bob')).isMod, false)
+  assert.equal(
+    (await post<ErrorRsp>(Endpoint.Remove, {key}, 't2_bob')).status,
+    403,
+  )
+  assert.equal(
+    (await post<RemoveRsp>(Endpoint.Remove, {key}, 't2_mod')).status,
+    200,
+  )
+  assert.equal((await get<InitRsp>(Endpoint.Init, 't2_bob')).others.length, 0)
+  assert.equal(
+    (await post<ErrorRsp>(Endpoint.Attempt, {key, moves: ['U']}, 't2_bob'))
+      .status,
+    404,
+  )
+})
+
+test('deadliness counts people, not attempts', () => {
+  // one player busting fifty times is one stumped person
+  assert.equal(deadliness({people: 1, cracked: 0}), 1)
+  assert.ok(
+    deadliness({people: 6, cracked: 0}) > deadliness({people: 9, cracked: 2}),
+  )
 })
