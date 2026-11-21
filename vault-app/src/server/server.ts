@@ -82,7 +82,7 @@ async function route(
   const method = EndpointMethod[endpoint]
   let rsp: AnyRsp
   if (method !== reqMsg.method) {
-    rsp = {error: 'not found', status: 404}
+    rsp = {error: 'Not found.', status: 404}
   } else {
     switch (endpoint) {
       case Endpoint.Init:
@@ -110,7 +110,7 @@ async function route(
         break
       default:
         endpoint satisfies never
-        rsp = {error: 'not found', status: 404}
+        rsp = {error: 'Not found.', status: 404}
     }
   }
   writeJson<PartialJsonValue>(
@@ -238,7 +238,7 @@ async function routeAttempt(
     req.moves.length > 400 ||
     !req.moves.every(isMove)
   )
-    return {error: 'bad run', status: 400}
+    return {error: 'That run couldn’t be read. Try again.', status: 400}
   const found = await levelFor(req.key)
   if (!found) return {error: 'That vault does not exist.', status: 404}
   // The server replays the moves itself: what counts is what the rules say happened.
@@ -339,7 +339,7 @@ async function routeShare(
     req.moves.length > 400 ||
     !req.moves.every(isMove)
   )
-    return {error: 'bad run', status: 400}
+    return {error: 'That run couldn’t be read. Try again.', status: 400}
   const found = await levelFor(req.key)
   if (!found) return {error: 'That vault does not exist.', status: 404}
   const V = parse(found.level)

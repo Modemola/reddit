@@ -16,7 +16,7 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 - Every vault shows the best possible number of moves. Beat it, or match it for a perfect run.
 - Once you’ve cracked a vault, your best run replays as a teal ghost that moves when you move, so you can race your own record.
 
-**Tonight’s job:** six house vaults, each teaching one trick, ending in The Core.
+**Training heist:** six house vaults, each teaching one trick, ending in The Core.
 
 **Building**
 
@@ -32,7 +32,7 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 - The community makes the daily content: every player’s vault is a puzzle for everyone else.
 - Red marks on the floor show where other people were caught.
 - After a crack you see how you did against everyone else who cracked it (“Fewer moves than 70% of the 12 other thieves…”).
-- **Vault of the night**: the deadliest player vault (most thieves caught, every crack counting against it) is featured on the job sheet and the feed card.
+- **Vault of the night**: the deadliest player vault (most thieves caught, every crack counting against it) is featured on the home screen and the feed card.
 - Deadliest vaults rise to the top of tonight’s list.
 - A new post goes up every night automatically.
 - Night streaks: crack at least one vault every night to keep yours going (your own vault doesn’t count).

@@ -241,12 +241,12 @@ $('home-link').onkeydown = e => { if (e.key === 'Enter') show('home'); };
 const P = painter($('board'));
 const G = { queue: null, face: 'U', gAng: [], cAng: [], blinkAt: 0, frames: [], lastCap: 0, endAt: 0, result: null, drawn: {}, aim: false, barks: [], pebbleFx: null, L: null, key: '', label: '', next: null, V: null, s: null, prev: null, anim: 1, a0: 0, moves: 0, over: null, best: 0, owner: null };
 function play(L, key, label, next, owner) {
-  Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1 });
+  Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1, tryNo: (progress[key]?.tries || 0) + 1 });
   for (const f of G.frames || []) f.bmp?.close?.();
   G.log = []; G.queue = null; G.face = 'U'; G.gAng = []; G.cAng = []; FX.parts = []; FX.shake = FX.flash = FX.punch = null; G.downAt = {}; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
   G.best = (solve(G.V) || []).length;
   G.ghost = loadGhost(key, G.V);
-  $('overlay').hidden = true; $('coach').hidden = true; coachState.tip = null; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
+  $('overlay').hidden = true; $('coach').hidden = true; $('crowd').hidden = false; coachState.tip = null; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
 }
 function restart() { play(G.L, G.key, G.label, G.next, G.owner); }
 function move(m) {
@@ -271,28 +271,28 @@ function move(m) {
 }
 let bumpT = 0;
 function finish(n) {
-  if (G.key === 'test') { G.over = n.status; music.sting(n.status === 'won' ? 'cracked' : 'caught'); overlay(n.status, n.status === 'won' ? 'CRACKED' : 'CAUGHT', n.status === 'won' ? `Your vault works. ${G.moves} moves; the best possible is ${G.best}.` : why(n.cause), G.label === 'Test run' ? 'Tap to go back to building' : 'Tap to go back to the job sheet'); return; }
+  if (G.key === 'test') { G.over = n.status; music.sting(n.status === 'won' ? 'cracked' : 'caught'); overlay(n.status, n.status === 'won' ? 'CRACKED' : 'CAUGHT', n.status === 'won' ? `Your vault works. ${G.moves} moves; the best possible is ${G.best}.` : why(n.cause, G.moves), G.label === 'Test run' ? 'Tap anywhere to go back to building' : 'Tap anywhere to go back'); return; }
   const prev = progress[G.key] || { tries: 0, won: false, moves: 0 };
   const tries = prev.tries + 1;
   try { navigator.vibrate?.(n.status === 'caught' ? [70, 50, 70] : [20, 40, 20, 40, 60]); } catch {}
   if (n.status === 'caught') {
     sfx.alarm(); music.sting('caught'); G.over = 'caught';
-    overlay('caught', 'CAUGHT', why(n.cause), 'Tap to try again');
+    overlay('caught', 'CAUGHT', why(n.cause, G.moves), 'Tap anywhere to try again');
   } else {
     sfx.win(); music.sting('cracked'); G.over = 'won';
     saveGhost(G.key, G.log);
-    overlay('won', 'CRACKED', `${G.moves} moves${G.moves <= G.best ? ' · a perfect run' : ` · best possible is ${G.best}`}. Caught ${tries - 1} ${tries - 1 === 1 ? 'time' : 'times'} first.`, G.next ? 'Tap for the next vault' : 'Tap to go back to the job sheet');
+    overlay('won', 'CRACKED', `${G.moves} moves${G.moves <= G.best ? ', a perfect run.' : `. The best possible is ${G.best}.`} ${tries === 1 ? 'First try.' : `Cracked on try ${tries}.`}`, G.next ? 'Tap anywhere for the next vault' : 'Tap anywhere to go back');
   }
   // what we show is local; what counts is the server's replay of the same moves
   progress[G.key] = { tries, won: prev.won || n.status === 'won', moves: n.status === 'won' ? (prev.won ? Math.min(prev.moves, G.moves) : G.moves) : prev.moves };
   submitAttempt(G.key, G.log.slice());
   renderPlay();
 }
-const why = c => ({ guard: 'A guard spotted you.', laser: 'You walked into a live laser.', camera: 'The camera caught you.' }[c] || 'You were caught.');
+const why = (c, m) => ({ guard: 'A guard spotted you', laser: 'You walked into a live laser', camera: 'A camera caught you' }[c] || 'You were caught') + (m ? ` on move ${m}.` : '.');
 function overlay(cls, h, p, sub) {
   const o = $('overlay'); o.className = 'overlay ' + cls; o.hidden = false;
   const canShare = G.key !== 'test' && G.frames.length > 2 && !shared.has(G.key);
-  o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="small">${sub}</div>` + (canShare ? `<button class="primary share" type="button" id="share-btn">${cls === 'won' ? 'Post this crack in the comments' : 'Post this bust in the comments'}</button>` : '');
+  o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="extras"></div>` + (canShare ? `<button class="primary share" type="button" id="share-btn">${cls === 'won' ? 'Post this crack in the comments' : 'Post this bust in the comments'}</button>` : '') + `<div class="small">${sub}</div>`;
   const sb = $('share-btn'); if (sb) sb.onclick = e => { e.stopPropagation(); void shareRun(sb); };
 }
 $('overlay').onclick = () => {
@@ -532,13 +532,12 @@ function renderPlay() {
   if (G.key === 'test') { $('crowd').innerHTML = '<b>Test run.</b> Nothing here is saved.'; }
   else {
     const st = statsFor(G.key); for (const [i, c] of Object.entries(st.marks)) crowdMarks.set(Number(i), c);
-    $('crowd').innerHTML = crowdStatus !== 'live' ? crowdLine() : !st.people ? '<b>Nobody has tried it yet.</b> Your mistakes will be the first marks.' : `Caught <b>${st.caught}</b> · cracked by <b>${st.cracked}</b>. Red marks: where people got caught.`;
+    $('crowd').innerHTML = crowdStatus !== 'live' ? crowdLine() : !st.people ? '<b>Nobody has tried this vault yet.</b>' : `<b>${st.caught}</b> ${st.caught === 1 ? 'bust' : 'busts'} and <b>${st.cracked}</b> ${st.cracked === 1 ? 'crack' : 'cracks'} so far. The red marks show where people got caught.`;
   }
   const pb = $('pebble'); pb.textContent = G.aim ? 'Cancel' : `Pebble ×${G.s?.peb ?? 0}`; pb.disabled = !G.s?.peb && !G.aim;
   pb.className = G.aim ? 'primary' : 'ghost';
-  const rec = progress[G.key];
   if (G.ghost) $('meta').title = 'The teal ghost is your best run on this vault.';
-  $('meta').innerHTML = `moves <b>${G.moves}</b> · best possible <b>${G.best}</b>` + (G.ghost ? ` · <span class="ghostnote">your best <b>${G.ghost.length - 1}</b></span>` : '') + (G.key !== 'test' ? ` · try <b>${(rec?.tries || 0) + (G.over ? 0 : 1)}</b>` : '');
+  $('meta').innerHTML = `moves <b>${G.moves}</b> · best possible <b>${G.best}</b>` + (G.ghost ? ` · <span class="ghostnote">your best <b>${G.ghost.length - 1}</b></span>` : '') + (G.key !== 'test' ? ` · try <b>${G.tryNo}</b>` : '');
 }
 
 // ---------- home ----------
@@ -546,8 +545,8 @@ function playHouse(i) { play(LEVELS[i], 'h' + (i + 1), `Vault ${i + 1} of ${LEVE
 function renderHome() {
   const done = LEVELS.filter((_, i) => progress['h' + (i + 1)]?.won).length;
   const st = INIT?.streak;
-  const streak = st?.count ? ` <b>${st.count}-night streak.</b>${st.tonight ? '' : ' Crack any vault tonight to keep it.'}` : '';
-  $('job-line').innerHTML = (done === LEVELS.length ? '<b>All six cracked.</b> Now try the vaults other players built, or build your own.' : `<b>${done} of ${LEVELS.length}</b> house vaults cracked. Each one teaches a trick.`) + streak;
+  const streak = st?.count ? `<div class="streakline"><b>Streak: ${st.count} ${st.count === 1 ? 'night' : 'nights'}.</b> ${st.tonight ? 'Come back tomorrow night to keep it going.' : 'Crack any vault tonight to keep it.'}</div>` : '';
+  $('job-line').innerHTML = (done === LEVELS.length ? '<b>All six cracked.</b> Now try the vaults other players built tonight, or build your own.' : `<b>${done} of ${LEVELS.length}</b> cracked. Six practice vaults, each teaching one trick.`) + streak;
   $('jobs').innerHTML = LEVELS.map((L, i) => `<button type="button" class="${progress['h' + (i + 1)]?.won ? 'done' : ''}" data-i="${i}" aria-label="${L.name}"><b>${i + 1}</b>${progress['h' + (i + 1)]?.won ? 'cracked' : progress['h' + (i + 1)]?.tries ? 'tried' : 'open'}</button>`).join('');
   $('jobs').querySelectorAll('button').forEach((b, i) => b.prepend(thumb(LEVELS[i], 30)));
   $('jobs').querySelectorAll('button').forEach(b => b.onclick = () => { sfx.wake(); playHouse(+b.dataset.i); });
@@ -555,7 +554,7 @@ function renderHome() {
   if (mine) {
     const st = mine.stats;
     $('mine').innerHTML = `<div class="title"><h3 style="font-size:1.25rem"></h3><div class="vno">best possible ${mine.best} moves</div></div>
-      <div class="statrow"><div class="stat"><div class="v">${st.caught}</div><div class="l">thieves caught</div></div><div class="stat"><div class="v">${st.cracked}</div><div class="l">cracked it</div></div><div class="stat"><div class="v">${st.people ? Math.round(100 * st.cracked / st.people) + '%' : '–'}</div><div class="l">success rate</div></div></div>
+      <div class="statrow"><div class="stat"><div class="v">${st.caught}</div><div class="l">busts</div></div><div class="stat"><div class="v">${st.cracked}</div><div class="l">cracks</div></div><div class="stat"><div class="v">${st.people ? Math.round(100 * st.cracked / st.people) + '%' : '–'}</div><div class="l">crack rate</div></div></div>
       <div class="sub">${st.people ? (st.cracked ? `${st.people} ${st.people === 1 ? 'person has' : 'people have'} tried it.` : '<b>Nobody has cracked it yet.</b>') : 'Nobody has tried it yet. Check back later tonight.'}</div>
       <div class="row"><button class="ghost" id="mine-play" type="button">Play it</button></div>`;
     $('mine').querySelector('h3').textContent = mine.name;
@@ -571,7 +570,7 @@ function renderHome() {
   $('others').innerHTML = '';
   for (const b of list) {
     const r = progress[b.key], btn = document.createElement('button'); btn.type = 'button'; btn.className = 'vrow';
-    btn.innerHTML = `<span class="n"></span><span class="s"></span><span class="tag ${r?.won ? 'ok' : r?.tries ? 'no' : ''}">${r?.won ? 'cracked' : r?.tries ? 'caught ×' + r.tries : 'new'}</span>`;
+    btn.innerHTML = `<span class="n"></span><span class="s"></span><span class="tag ${r?.won ? 'ok' : r?.tries ? 'no' : ''}">${r?.won ? 'cracked' : r?.tries ? 'busted ×' + r.tries : 'new'}</span>`;
     btn.classList.add('thumbed'); btn.prepend(thumb(b.level, 34));
     btn.querySelector('.n').textContent = b.name;
     btn.querySelector('.s').textContent = `by u/${b.author || 'someone'} · ${stumpedLine(b.stats)}`;
@@ -782,7 +781,7 @@ function openBuilder() {
   $('b-undo').disabled = B.hist.length < 2;
   const tip = $('b-tip');
   if (!tipsSeen.builder) {
-    tip.innerHTML = 'Not sure where to start? Tap <strong>Surprise me</strong> for a layout from tonight’s parts, then make it meaner. Thieves carry one <strong>pebble</strong>, and the checker counts it, so a guard alone in a corridor won’t stop anyone.';
+    tip.innerHTML = 'Not sure where to start? Tap <strong>Surprise me</strong> for a layout from tonight’s parts, then make it meaner.' + (PARTS.guard ? ' Thieves carry one <strong>pebble</strong> that turns nearby guards, and the checker counts it, so a guard alone in a corridor won’t stop anyone.' : ' The meter under the board shows how hard it is.');
     tip.hidden = false; tipsSeen.builder = 1; try { localStorage.setItem('vault:tips', JSON.stringify(tipsSeen)); } catch {}
   } else tip.hidden = true;
   $('vaultName').value = B.d.name || '';
@@ -818,7 +817,7 @@ function renderBuilder() {
     say('Camera:'); SWEEPS.forEach((sw, i) => chip(['↕ up/down', '↔ left/right', '↻ clockwise', '↺ anticlockwise'][i], c.dirs.join() === sw.join(), () => { c.dirs = sw; changed(); }));
     chip('Remove', false, () => { removeOcc(s); B.sel = null; changed(); });
   } else {
-    say({ wall: 'Tap floor to place a wall, tap a wall to remove it.', guard: 'Tap floor to place a guard, then draw its route.', laser: 'Tap a wall to mount a laser on it.', cam: 'Tap floor to place a camera.', gem: 'Tap a floor tile in the top half to move the gem.', erase: 'Tap any part to remove it.' }[B.tool]);
+    say({ wall: 'Tap or drag across the floor to place walls; tap or drag over walls to remove them.', guard: 'Tap floor to place a guard, then draw its route.', laser: 'Tap a wall to mount a laser on it.', cam: 'Tap floor to place a camera.', gem: 'Tap a floor tile in the top half to move the gem.', erase: 'Tap or drag over parts to remove them.' }[B.tool]);
   }
 }
 const BFX = { parts: [], rings: [], last: 0, hover: null };
@@ -978,18 +977,18 @@ async function submitAttempt(key, moves) {
     const was = INIT?.streak;
     if (INIT) INIT.streak = rsp.streak;
     if (rsp.rank && G.over === 'won' && !$('overlay').hidden) {
-      const { others, slower } = rsp.rank, el = document.createElement('div'); el.className = 'small rank';
+      const { others, slower } = rsp.rank, el = document.createElement('div'); el.className = 'rank';
       const them = `${others} other ${others === 1 ? 'thief' : 'thieves'}`;
       el.textContent = others === 0 ? 'First to crack it!'
         : slower > 0 ? `Fewer moves than ${Math.round(100 * slower / others)}% of the ${them} who cracked it.`
         : rsp.moves <= G.best ? `Tied for the fewest moves with ${them}.`
-        : `${others === 1 ? 'The other thief' : `All ${them}`} who cracked it used fewer or as many moves. A perfect run takes ${G.best}.`;
-      $('overlay').insertBefore(el, $('share-btn'));
+        : `Every other thief who cracked it was as quick or quicker. A perfect run takes ${G.best}.`;
+      $('overlay').querySelector('.extras')?.appendChild(el);
     }
     if (rsp.result === 'won' && rsp.streak.tonight && !was?.tonight && G.over === 'won' && !$('overlay').hidden) {
-      const el = document.createElement('div'); el.className = 'small streak';
-      el.textContent = rsp.streak.count === 1 ? 'Night streak started. Crack a vault tomorrow to keep it going.' : `${rsp.streak.count}-night streak!`;
-      $('overlay').insertBefore(el, $('share-btn'));
+      const el = document.createElement('div'); el.className = 'streak';
+      el.textContent = rsp.streak.count === 1 ? 'Streak started. Crack a vault tomorrow night to keep it going.' : `${rsp.streak.count} nights in a row!`;
+      $('overlay').querySelector('.extras')?.appendChild(el);
     }
     if (INIT) {
       if (INIT.house[key]) INIT.house[key] = rsp.stats;
@@ -1080,14 +1079,15 @@ function showTip(k) {
   if (tipsSeen[k] || coachState.tip === k) return false;
   tipsSeen[k] = 1; try { localStorage.setItem('vault:tips', JSON.stringify(tipsSeen)); } catch {}
   coachState.tip = k; coachState.at = performance.now(); coachState.moves = G.moves;
-  const el = $('coach'); el.textContent = TIPS[k]; el.hidden = false;
+  const el = $('coach'); el.textContent = TIPS[k]; el.hidden = false; $('crowd').hidden = true;
   return true;
 }
 function coach() {
   const el = $('coach');
   // the opening tip makes way as soon as you move, so a warning can take its place
-  if (coachState.tip === 'move' && G.moves >= 1) { el.hidden = true; coachState.tip = null; }
-  if (coachState.tip && (G.over || G.moves - coachState.moves >= 2) && performance.now() - coachState.at > 2500) { el.hidden = true; coachState.tip = null; }
+  const hide = () => { el.hidden = true; coachState.tip = null; $('crowd').hidden = false; };
+  if (coachState.tip === 'move' && G.moves >= 1) hide();
+  if (coachState.tip && (G.over || G.moves - coachState.moves >= 2) && performance.now() - coachState.at > 2500) hide();
   if (view !== 'play' || G.over || G.key === 'test' || coachState.tip) return;
   const V = G.V, s = G.s, nextS = { ...s, t: s.t + 1, gs: advanceGuards(s.gs) };
   if (G.aim && showTip('aim')) return;

@@ -273,20 +273,21 @@ const isXY = (p: unknown): p is XY =>
 
 /** Checks the shape of a player vault and that it fits tonight's parts. Returns an error message or null. */
 export function checkPlayerLevel(l: unknown, parts: Parts): string | null {
-  if (!l || typeof l !== 'object') return 'not a vault'
+  if (!l || typeof l !== 'object') return 'it isn’t a vault'
   const v = l as Partial<Level>
   if (typeof v.name !== 'string' || !v.name.trim() || v.name.length > 24)
-    return 'name must be 1 to 24 characters'
-  if (!Array.isArray(v.map) || v.map.length !== H) return 'bad map'
+    return 'the name must be 1 to 24 characters'
+  if (!Array.isArray(v.map) || v.map.length !== H)
+    return 'the floor plan is damaged'
   if (
     !v.map.every(
       r => typeof r === 'string' && r.length === W && /^[#.SG]+$/.test(r),
     )
   )
-    return 'bad map'
+    return 'the floor plan is damaged'
   const flat = v.map.join('')
   if (flat.split('S').length !== 2 || flat.split('G').length !== 2)
-    return 'one entrance and one gem'
+    return 'it needs exactly one entrance and one gem'
   if (v.map[START[1]]?.[START[0]] !== 'S')
     return 'the entrance must stay where it is'
   for (let y = 0; y < H; y++)
@@ -300,7 +301,7 @@ export function checkPlayerLevel(l: unknown, parts: Parts): string | null {
   const lasers = v.lasers ?? []
   const cams = v.cams ?? []
   if (!Array.isArray(guards) || !Array.isArray(lasers) || !Array.isArray(cams))
-    return 'bad parts'
+    return 'a part is damaged'
   if (
     guards.length > parts.guard ||
     lasers.length > parts.laser ||
@@ -318,7 +319,7 @@ export function checkPlayerLevel(l: unknown, parts: Parts): string | null {
         (g.face === undefined || isDir(g.face)),
     )
   )
-    return 'bad guard'
+    return 'a guard’s route or settings are invalid'
   if (
     !lasers.every(
       x =>
@@ -327,7 +328,7 @@ export function checkPlayerLevel(l: unknown, parts: Parts): string | null {
         RHYTHMS.some(([on, off]) => on === x.on && off === x.off),
     )
   )
-    return 'bad laser'
+    return 'a laser’s settings are invalid'
   if (
     !cams.every(
       c =>
@@ -337,7 +338,7 @@ export function checkPlayerLevel(l: unknown, parts: Parts): string | null {
         (c.see === undefined || c.see === 2),
     )
   )
-    return 'bad camera'
+    return 'a camera’s settings are invalid'
   // walls placed inside the vault, including ones a laser is mounted on
   let inner = 0
   for (let y = 1; y < H - 1; y++)
