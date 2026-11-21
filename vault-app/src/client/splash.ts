@@ -56,6 +56,8 @@ void loadStats()
 const scene = document.getElementById('scene') as HTMLCanvasElement
 const sctx = scene.getContext('2d')
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+let floorAt = -1e9
+let floorY = 0
 function drawScene(now: number): void {
   if (!sctx) return
   const dpr = Math.min(devicePixelRatio || 1, 2)
@@ -73,9 +75,14 @@ function drawScene(now: number): void {
   const dir = phase < 0.5 ? 1 : -1
   const x = w / 2 + span * Math.sin(phase * Math.PI * 2 - Math.PI / 2) * -1
   // walk below the button when the card is short, so the guard never crosses it
-  const btn = startBtn.getBoundingClientRect()
-  const top = scene.getBoundingClientRect().top
-  const y = Math.min(h - s * 0.55, Math.max(h - s * 1.3, btn.bottom - top + s * 0.85))
+  // (measured twice a second, not every frame: the stats line can push the button down once)
+  if (now - floorAt > 500) {
+    floorAt = now
+    floorY =
+      startBtn.getBoundingClientRect().bottom -
+      scene.getBoundingClientRect().top
+  }
+  const y = Math.min(h - s * 0.55, Math.max(h - s * 1.3, floorY + s * 0.85))
   const ang = dir > 0 ? 0 : Math.PI
   const sweep = still ? 0 : Math.sin(now / 1300) * 0.35
   // the torch beam
