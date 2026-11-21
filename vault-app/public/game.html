@@ -1038,9 +1038,10 @@
           <canvas
             class="cv"
             id="board"
+            role="img"
             aria-label="Vault floor plan. Swipe or use the arrow keys to move one tile. Tap yourself or press space to wait."
           ></canvas>
-          <div class="overlay" id="overlay" hidden></div>
+          <div class="overlay" id="overlay" aria-live="assertive" hidden></div>
         </div>
         <div class="bar">
           <div class="meta" id="meta"></div>
@@ -1066,6 +1067,7 @@
           <canvas
             class="cv"
             id="bboard"
+            role="img"
             aria-label="Vault builder. Tap a tile to place the selected part."
           ></canvas>
         </div>

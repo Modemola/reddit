@@ -300,6 +300,8 @@ function finish(n) {
 const why = (c, m) => ({ guard: 'A guard spotted you', laser: 'You walked into a live laser', camera: 'A camera caught you' }[c] || 'You were caught') + (m ? ` on move ${m}.` : '.');
 function overlay(cls, h, p, sub) {
   const o = $('overlay'); o.className = 'overlay ' + cls; o.hidden = false;
+  // with a keyboard and mouse, say which key continues
+  if (matchMedia('(hover: hover) and (pointer: fine)').matches) sub = sub.replace('Tap anywhere', 'Click or press space');
   const canShare = G.key !== 'test' && G.frames.length > 2 && !shared.has(G.key);
   o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="extras"></div>` + (canShare ? `<button class="primary share" type="button" id="share-btn">${cls === 'won' ? 'Post this crack in the comments' : 'Post this bust in the comments'}</button>` : '') + `<div class="small">${sub}</div>`;
   const sb = $('share-btn'); if (sb) sb.onclick = e => { e.stopPropagation(); void shareRun(sb); };
