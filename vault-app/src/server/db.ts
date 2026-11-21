@@ -47,6 +47,9 @@ export async function getProgress(
   return out
 }
 
+/** How many of one person's runs on a vault count toward its public numbers. */
+export const STAT_TRIES = 10
+
 /** Records one finished attempt. Returns the player's updated record. */
 export async function recordAttempt(
   userId: string,
@@ -72,14 +75,19 @@ export async function recordAttempt(
         : prev.moves,
   }
   await redis.hSet(`prog:${userId}`, {[key]: JSON.stringify(next)})
-  if (countsForStats) {
+  // One person can shape a vault's public numbers only so much: their first crack
+  // always counts, but busts after they cracked it, or past their first few, don't
+  // (nobody can paint the floor red alone).
+  const counts =
+    countsForStats && !prev.won && (result === 'won' || prev.tries < STAT_TRIES)
+  if (counts) {
     await redis.hSet(`people:${key}`, {[userId]: '1'})
     await redis.hIncrBy(`stats:${key}`, 'tries', 1)
     if (result === 'caught') {
       await redis.hIncrBy(`stats:${key}`, 'caught', 1)
       if (caughtAt !== null)
         await redis.hIncrBy(`marks:${key}`, String(caughtAt), 1)
-    } else if (!prev.won) {
+    } else {
       await redis.hIncrBy(`stats:${key}`, 'cracked', 1)
     }
   }

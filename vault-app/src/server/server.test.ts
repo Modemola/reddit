@@ -20,6 +20,7 @@ import {
 } from '../shared/api.ts'
 import {type Level, parse, solve} from '../shared/engine.ts'
 import {deadliness, HOUSE, nightOf, partsFor} from '../shared/vault.ts'
+import {STAT_TRIES} from './db.ts'
 import {onReq} from './server.ts'
 
 // A small in-memory stand-in for the Redis calls the server uses.
@@ -184,6 +185,32 @@ test('the server replays runs: a real crack counts, a bust leaves a mark, a half
     moves: [{pebble: 'everywhere'}],
   })
   assert.equal(junk.status, 400)
+})
+
+test('one player cannot paint a vault red: busts past the cap or after a crack do not count', async () => {
+  for (let i = 0; i < STAT_TRIES + 5; i++)
+    await post<AttemptRsp>(
+      Endpoint.Attempt,
+      {key: 'h1', moves: ['U', 'U', 'U']},
+      't2_spam',
+    )
+  const sol = solve(parse(HOUSE[0]!))!
+  const won = await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: 'h1', moves: sol},
+    't2_spam',
+  )
+  // the first crack always counts, even after the cap
+  assert.equal(won.json.stats.caught, STAT_TRIES)
+  assert.equal(won.json.stats.cracked, 1)
+  assert.equal(won.json.progress.tries, STAT_TRIES + 6)
+  const after = await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: 'h1', moves: ['U', 'U', 'U']},
+    't2_spam',
+  )
+  assert.equal(after.json.stats.caught, STAT_TRIES)
+  assert.equal(after.json.stats.people, 1)
 })
 
 // A crackable test vault built from whatever tonight's parts are, so the tests pass on any date.
