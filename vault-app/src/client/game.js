@@ -266,6 +266,13 @@ function warmBests() {
   const idle = window.requestIdleCallback || (f => setTimeout(() => f({ timeRemaining: () => 8 }), 200));
   idle(() => { const [k, L] = todo[0]; bestFor(k, L); warmBests(); });
 }
+// The CSS sizes the board for a typical screen; this makes sure the controls are always in view
+// (a long vault name on two lines, a short phone). It only ever shrinks the board, never grows it.
+function fitBoard() {
+  const box = $('board').parentElement; box.style.maxWidth = ''; P.size(G.V);
+  const over = $('wait').getBoundingClientRect().bottom + scrollY + 8 - innerHeight;
+  if (over > 0) { box.style.maxWidth = Math.max(200, box.clientWidth - over * 7 / 9) + 'px'; P.size(G.V); }
+}
 function play(L, key, label, next, owner) {
   Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1, tryNo: (progress[key]?.tries || 0) + 1 });
   for (const f of G.frames || []) f.bmp?.close?.();
@@ -273,7 +280,7 @@ function play(L, key, label, next, owner) {
   G.best = bestFor(key, L, G.V);
   G.ghost = loadGhost(key, G.V);
   explain(G.V);
-  $('overlay').hidden = true; $('coach').hidden = true; $('crowd').hidden = false; coachState.tip = null; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
+  $('overlay').hidden = true; $('coach').hidden = true; $('crowd').hidden = false; coachState.tip = null; show('play'); fitBoard(); renderPlay(); music.play('heist'); music.setMood('calm');
 }
 function restart() { play(G.L, G.key, G.label, G.next, G.owner); }
 function move(m) {
@@ -1261,6 +1268,6 @@ function frame(now) {
   }
   if (view === 'build') drawBuilder(now);
 }
-addEventListener('resize', () => { if (view === 'play') P.size(G.V); if (view === 'build') BP.size({ w: W7, h: H9 }); });
+addEventListener('resize', () => { if (view === 'play' && G.V) fitBoard(); if (view === 'build') BP.size({ w: W7, h: H9 }); });
 $('night').textContent = 'Night ' + (dayNo + 1);
 show('home'); requestAnimationFrame(frame); void load(); warmBests();
