@@ -332,6 +332,12 @@ function overlay(cls, h, p, sub) {
   const canShare = G.key !== 'test' && G.frames.length > 2 && !shared.has(G.key) && crowdStatus === 'live' && !!INIT?.userId;
   o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="extras"></div>` + (canShare ? `<button class="primary share" type="button" id="share-btn">${cls === 'won' ? 'Post this crack in the comments' : 'Post this bust in the comments'}</button>` : '') + `<div class="small">${sub}</div>`;
   const sb = $('share-btn'); if (sb) sb.onclick = e => { e.stopPropagation(); void shareRun(sb); };
+  fitOverlay();
+}
+// a result card that doesn't fit its board gets tighter, step by step
+function fitOverlay() {
+  const o = $('overlay'); o.classList.remove('tight', 'tighter', 'overflowing');
+  for (const c of ['tight', 'tighter', 'overflowing']) { if (o.scrollHeight <= o.clientHeight + 1) return; o.classList.add(c); }
 }
 $('overlay').onclick = () => {
   if (G.key === 'test') { show(G.label === 'Test run' ? 'build' : 'home'); return; }
@@ -1055,12 +1061,12 @@ async function submitAttempt(key, moves) {
         : slower > 0 ? `Fewer moves than ${Math.round(100 * slower / others)}% of the ${them} who cracked it.`
         : rsp.moves <= G.best ? `Tied for the fewest moves with ${them}.`
         : `Every other thief who cracked it was as quick or quicker. A perfect run takes ${G.best}.`;
-      $('overlay').querySelector('.extras')?.appendChild(el);
+      $('overlay').querySelector('.extras')?.appendChild(el); fitOverlay();
     }
     if (rsp.result === 'won' && rsp.streak.tonight && !was?.tonight && G.over === 'won' && !$('overlay').hidden) {
       const el = document.createElement('div'); el.className = 'streak';
       el.textContent = rsp.streak.count === 1 ? 'Streak started. Crack a vault tomorrow night to keep it going.' : `${rsp.streak.count} nights in a row!`;
-      $('overlay').querySelector('.extras')?.appendChild(el);
+      $('overlay').querySelector('.extras')?.appendChild(el); fitOverlay();
     }
     if (INIT) {
       if (INIT.house[key]) INIT.house[key] = rsp.stats;

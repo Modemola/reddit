@@ -198,6 +198,46 @@
       backdrop-filter: blur(2px);
       cursor: pointer;
     }
+    /* small boards: the card tightens step by step instead of being cut off */
+    .overlay.tight {
+      gap: 6px;
+      padding: 12px;
+    }
+    .overlay.tight h2 {
+      font-size: 1.5rem;
+    }
+    .overlay.tight p {
+      font-size: 0.9rem;
+      line-height: 1.3;
+    }
+    .overlay.tight .rank,
+    .overlay.tight .streak {
+      font-size: 0.8rem;
+      line-height: 1.3;
+    }
+    .overlay.tight .share {
+      padding: 7px 12px;
+      font-size: 0.8rem;
+    }
+    .overlay.tight .small {
+      font-size: 0.72rem;
+    }
+    .overlay.tighter {
+      gap: 4px;
+      padding: 8px;
+    }
+    .overlay.tighter h2 {
+      font-size: 1.25rem;
+    }
+    .overlay.tighter p,
+    .overlay.tighter .rank,
+    .overlay.tighter .streak {
+      font-size: 0.74rem;
+    }
+    /* if it still can't fit, keep the top (what happened) and let the end run off */
+    .overlay.tighter.overflowing {
+      justify-content: flex-start;
+    }
     .overlay h2 {
       font-size: 2rem;
       letter-spacing: 0.04em;
@@ -377,6 +417,16 @@
       }
       #snd {
         padding: 8px 9px;
+      }
+      /* Restart, Pebble and Wait share one row */
+      #v-play .bar .row {
+        flex-wrap: nowrap;
+        gap: 6px;
+      }
+      #v-play .bar .row button {
+        flex: 1;
+        padding-inline: 6px;
+        white-space: nowrap;
       }
     }
     .list {
