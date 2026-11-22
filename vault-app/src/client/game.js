@@ -252,17 +252,32 @@ function explain(V) {
   $('hint').innerHTML = '<b>Swipe</b> or tap to move. Red corners are watched next turn.' + (g ? ' Walk into a guard <b>from behind or the side</b> to knock them out. Your <b>pebble</b> turns nearby guards for two turns.' : '') + (l && !g ? ' A flickering beam fires next turn.' : '') + (c && !g ? ' Slip past a camera while it looks away.' : '');
   $('pebble').hidden = !g;
 }
+// The best possible run for a vault never changes once it exists, so it is solved once and remembered
+// (the six house vaults are solved ahead of time, while the game is idle). Test runs are always solved fresh.
+const BEST = new Map();
+const bestKey = (key, L) => key === 'test' ? null : key + ':' + JSON.stringify(L);
+function bestFor(key, L, V) {
+  const k = bestKey(key, L); if (k && BEST.has(k)) return BEST.get(k);
+  const n = (solve(V || parse(L)) || []).length; if (k) BEST.set(k, n); return n;
+}
+function warmBests() {
+  const todo = LEVELS.map((L, i) => ['h' + (i + 1), L]).filter(([k, L]) => !BEST.has(bestKey(k, L)));
+  if (!todo.length) return;
+  const idle = window.requestIdleCallback || (f => setTimeout(() => f({ timeRemaining: () => 8 }), 200));
+  idle(() => { const [k, L] = todo[0]; bestFor(k, L); warmBests(); });
+}
 function play(L, key, label, next, owner) {
   Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1, tryNo: (progress[key]?.tries || 0) + 1 });
   for (const f of G.frames || []) f.bmp?.close?.();
   G.log = []; G.queue = null; G.face = 'U'; G.gAng = []; G.cAng = []; FX.parts = []; FX.shake = FX.flash = FX.punch = null; G.downAt = {}; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
-  G.best = (solve(G.V) || []).length;
+  G.best = bestFor(key, L, G.V);
   G.ghost = loadGhost(key, G.V);
   explain(G.V);
   $('overlay').hidden = true; $('coach').hidden = true; $('crowd').hidden = false; coachState.tip = null; show('play'); P.size(G.V); renderPlay(); music.play('heist'); music.setMood('calm');
 }
 function restart() { play(G.L, G.key, G.label, G.next, G.owner); }
 function move(m) {
+  lastActive = performance.now();
   if (view !== 'play' || G.over) return;
   // a move made while the last one is still animating is kept and played straight after
   if (G.anim < 1) { G.queue = m; return; }
@@ -947,11 +962,18 @@ $('vaultName').addEventListener('input', e => {
   B.d.name = clean; saveDraft();
 });
 // A random vault from tonight's parts: try a few, keep the trickiest one that can still be cracked.
-function surprise() {
+// Tries 30 random layouts and keeps the most interesting crackable one. It hands the main thread back
+// between tries (about every 12 ms), so the page never freezes while the solver works.
+async function surprise() {
+  const btn = $('b-surprise'); if (btn.disabled) return;
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Building…';
+  try {
   const rnd = n => Math.floor(Math.random() * n);
   const free = (d, x, y) => inside(x, y) && !(x === START[0] && y >= H9 - 2) && !(d.gem[0] === x && d.gem[1] === y) && !d.walls.some(w => w[0] === x && w[1] === y) && !d.guards.some(g => g.path.some(p => p[0] === x && p[1] === y)) && !d.cams.some(c => c.at[0] === x && c.at[1] === y);
   let best = null, bestScore = -1;
+  let slice = performance.now();
   for (let attempt = 0; attempt < 30; attempt++) {
+    if (performance.now() - slice > 12) { await new Promise(res => setTimeout(res, 0)); slice = performance.now(); if (view !== 'build') return; }
     const d = blankDraft(); d.name = B.d.name;
     d.gem = [1 + rnd(5), 1 + rnd(3)];
     for (let i = 0; i < PARTS.wall; i++) { const x = 1 + rnd(5), y = 2 + rnd(5); if (free(d, x, y)) d.walls.push([x, y]); }
@@ -977,8 +999,9 @@ function surprise() {
   if (!best) { toast('Couldn’t find a good layout this time. Try again.'); return; }
   B.d = best; B.sel = null; B.routing = null; changed();
   toast('Here’s a start. Tweak it until it’s nasty.');
+  } finally { btn.disabled = false; btn.textContent = label; }
 }
-$('b-surprise').onclick = () => surprise();
+$('b-surprise').onclick = () => { void surprise(); };
 $('b-clear').onclick = () => { const n = B.d.name; B.d = blankDraft(); B.d.name = n; B.sel = null; B.routing = null; changed(); };
 $('b-test').onclick = () => { if (B.verdict === 'ok') { sfx.wake(); play({ ...B.level, name: B.level.name }, 'test', 'Test run'); } };
 $('b-lock').onclick = async () => {
@@ -1053,10 +1076,10 @@ const CAP_W = 270; // wide enough to read in a Reddit comment
 function capture(now) {
   const moving = G.anim < 1 || G.pebbleFx || G.barks.some(b => now >= b.t0) || (G.endAt && now - G.endAt < 1100);
   const first = !G.frames.length;
-  if (!first && (!moving || now - G.lastCap < 90)) return;
+  if (!first && (!moving || now - G.lastCap < 120)) return;
   if (G.endAt && now - G.endAt > 1100) return;
   // snapshots are taken off the main thread (no read-back stall), small, and only while something moves
-  const cv = $('board'), h = Math.round(CAP_W * cv.height / cv.width), rec = { bmp: null, delay: first ? 700 : 90, h };
+  const cv = $('board'), h = Math.round(CAP_W * cv.height / cv.width), rec = { bmp: null, delay: first ? 700 : 120, h };
   G.frames.push(rec);
   if (G.frames.length > 160) G.frames.splice(1, 1)[0].bmp?.close?.();
   G.lastCap = now;
@@ -1216,15 +1239,28 @@ addEventListener('pointerdown', () => sfx.wake(), { once: true });
 renderSound();
 
 // ---------- loop ----------
+// Full frame rate while anything moves or the player is touching the game; when the board is just
+// sitting there (torch flicker, gem sparkle), 30 fps looks the same and halves the work and the battery.
+let lastActive = 0, lastDraw = 0;
+const active = () => { lastActive = performance.now(); };
+for (const t of ['keydown', 'pointerdown', 'pointermove', 'wheel', 'resize']) addEventListener(t, active, { passive: true, capture: true });
+function calm(now) {
+  if (now - lastActive < 2500) return false;
+  if (view === 'play') return G.anim >= 1 && G.queue === null && !G.pebbleFx && !FX.parts.length && !FX.shake && !FX.flash && !FX.punch && !G.barks.length;
+  if (view === 'build') return !BFX.rings.length && !BFX.parts.length && !B.painting;
+  return true;
+}
 function frame(now) {
+  requestAnimationFrame(frame);
+  if (calm(now) && now - lastDraw < 30) return;
+  lastDraw = now;
   if (view === 'play' && G.V) {
     if (G.anim < 1) G.anim = Math.min(1, (now - G.a0) / ANIM_MS);
     if (G.anim >= 1 && G.queue !== null && !G.over) { const m = G.queue; G.queue = null; move(m); }
     drawPlay(now); capture(now); coach();
   }
   if (view === 'build') drawBuilder(now);
-  requestAnimationFrame(frame);
 }
 addEventListener('resize', () => { if (view === 'play') P.size(G.V); if (view === 'build') BP.size({ w: W7, h: H9 }); });
 $('night').textContent = 'Night ' + (dayNo + 1);
-show('home'); requestAnimationFrame(frame); void load();
+show('home'); requestAnimationFrame(frame); void load(); warmBests();
