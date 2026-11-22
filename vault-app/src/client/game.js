@@ -306,7 +306,8 @@ function overlay(cls, h, p, sub) {
   const o = $('overlay'); o.className = 'overlay ' + cls; o.hidden = false;
   // with a keyboard and mouse, say which key continues
   if (matchMedia('(hover: hover) and (pointer: fine)').matches) sub = sub.replace('Tap anywhere', 'Click or press space');
-  const canShare = G.key !== 'test' && G.frames.length > 2 && !shared.has(G.key);
+  // posting needs the server and a logged-in player
+  const canShare = G.key !== 'test' && G.frames.length > 2 && !shared.has(G.key) && crowdStatus === 'live' && !!INIT?.userId;
   o.innerHTML = `<h2>${h}</h2><p>${p}</p><div class="extras"></div>` + (canShare ? `<button class="primary share" type="button" id="share-btn">${cls === 'won' ? 'Post this crack in the comments' : 'Post this bust in the comments'}</button>` : '') + `<div class="small">${sub}</div>`;
   const sb = $('share-btn'); if (sb) sb.onclick = e => { e.stopPropagation(); void shareRun(sb); };
 }
@@ -576,7 +577,7 @@ function renderHome() {
     $('mine-play').onclick = () => play(mine.level, 'test', 'Your vault');
   } else {
     const th = themeFor(dayNo);
-    $('mine').innerHTML = `<div class="sub">${th ? `<b class="theme">Tonight is ${th.name}.</b> ${th.line} ` : ''}Tonight’s parts: <b>${partsLine()}</b>. Build a vault that catches people. You get one a night.</div><div class="row"><button class="primary" id="go-build" type="button">Build tonight’s vault</button></div>`;
+    $('mine').innerHTML = `<div class="sub">${th ? `<b class="theme">Tonight is ${th.name}.</b> ${th.line} ` : ''}Tonight’s parts: <b>${partsLine()}</b>. Build a vault that catches people. You get one a night.</div>${INIT && !INIT.userId ? '<div class="sub"><b>Log in to Reddit</b> to publish your vault and keep your runs. You can still play and test everything.</div>' : ''}<div class="row"><button class="primary" id="go-build" type="button">Build tonight’s vault</button></div>`;
     $('go-build').onclick = () => show('build');
   }
   renderVaultOfTheNight();
@@ -662,7 +663,7 @@ function removeButton(v) {
   return b;
 }
 const escapeHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-function crowdLine() { return crowdStatus === 'off' ? 'Tonight’s board could not be loaded. Check your connection and reopen the post.' : 'Loading tonight’s board…'; }
+function crowdLine() { return crowdStatus === 'off' ? 'Tonight’s vaults couldn’t be loaded. The training heist still works; check your connection and reopen the post for the rest.' : 'Loading tonight’s vaults…'; }
 
 // ---------- builder ----------
 function hash(n) { n = Math.sin(n * 127.1 + 311.7) * 43758.5453; return n - Math.floor(n); }
@@ -1002,7 +1003,9 @@ async function load() {
     dayNo = INIT.night; PARTS = INIT.parts; $('night').textContent = 'Night ' + (dayNo + 1);
   } catch { crowdStatus = 'off'; }
   // someone who has never played starts in the first vault, not on a menu
-  if (view === 'home' && INIT && !Object.keys(progress).length) { playHouse(0); return; }
+  // (without the server, this device's memory decides: no tips seen means a first visit)
+  const firstVisit = INIT ? !Object.keys(progress).length : !Object.keys(tipsSeen).length;
+  if (view === 'home' && firstVisit) { playHouse(0); return; }
   refresh();
 }
 async function submitAttempt(key, moves) {
