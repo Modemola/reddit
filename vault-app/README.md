@@ -2,6 +2,8 @@
 
 **Crack tonight’s vaults. Then build one that catches everyone else.**
 
+![Getting caught in The Lobby, cracking it on the next try, and the home screen with Vault of the night](../docs/media/screens.png)
+
 VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every night the subreddit gets a new post. You sneak through vaults one tile at a time, past patrolling guards, pulsing lasers and turning cameras, to reach the gem. Then you build your own vault from the same box of parts everyone else got tonight, and the rest of the subreddit tries to crack it.
 
 ## How to play
@@ -11,7 +13,7 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 - Swipe, or tap a tile next to you, to move one step. Tap yourself to wait a turn.
 - After every move of yours, everything else moves: guards walk their routes, lasers switch on and off, cameras turn.
 - Red corners show the tiles that will be watched after your next move. Getting caught is always fair.
-- Sneak into a guard **from behind** to knock them out. Walk into their face and you’re caught.
+- Walk into a guard **from behind or the side** to knock them out. Walk into their face and you’re caught.
 - You carry one **pebble**. Throw it and every guard within 3 tiles turns to look at the noise for two turns.
 - Every vault shows the best possible number of moves. Beat it, or match it for a perfect run.
 - Once you’ve cracked a vault, your best run replays as a teal ghost that moves when you move, so you can race your own record.
@@ -21,7 +23,7 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 **Building**
 
 - Everyone gets the same box of parts tonight (for example 8 walls, 2 guards, 1 camera). Twice a week the box has a theme: Laser Night, Double Patrol, All Eyes or Lockdown.
-- Place walls, draw guard routes, set laser rhythms and camera sweeps.
+- Place walls, draw guard routes (drag from the guard, up to 6 tiles), set laser rhythms and camera sweeps.
 - A checker solves your vault as you build. You can’t publish a vault nobody could crack, and it tells you when yours is “a straight walk” or “nasty”.
 - Stuck on a blank page? **Surprise me** builds a random vault from tonight’s parts that the checker has already proven crackable.
 - Drag to paint a line of walls, and undo anything (Ctrl+Z on a keyboard).
@@ -46,11 +48,11 @@ A new player skips the menu and starts in the first vault. Short tips appear jus
 
 ## Moderation
 
-Moderators of the subreddit see a **Remove** button on player vaults (two taps). It takes the vault off tonight’s list and stops it being played. Vault names are limited to 24 characters and shown as plain text.
+Moderators of the subreddit see a **Remove** button on player vaults (two taps). It takes the vault off tonight’s list and stops it being played. Vault names are limited to 24 characters, shown as plain text, and can’t contain invisible or direction-flipping characters.
 
 ## Fair play
 
-The client sends only its moves. The server replays them with the same rules engine to decide whether you cracked a vault or got caught, so nobody can fake a crack or pad a vault’s numbers. Player vaults are validated against tonight’s parts and re-solved on the server before they go live.
+The client sends only its moves. The server replays them with the same rules engine to decide whether you cracked a vault or got caught, so nobody can fake a crack or pad a vault’s numbers. One player can only move a vault’s public numbers so far: their first crack always counts, but busts after a crack or past their first ten don’t. Player vaults are validated against tonight’s parts and re-solved on the server before they go live.
 
 ## Development
 
@@ -72,7 +74,7 @@ npm run build && node --experimental-strip-types src/test/devserver.ts 5178
 
 - `src/shared/engine.ts`: the rules and a breadth-first solver (shared by client and server)
 - `src/shared/vault.ts`: nights, the parts box, house vaults, player vault checks
-- `src/server/`: routes (`api/init`, `api/attempt`, `api/publish`), Redis storage, the nightly post
+- `src/server/`: routes (`api/init`, `api/attempt`, `api/publish`, `api/share`, `api/remove`), Redis storage, the nightly post
 - `src/client/game.js`: the game (canvas), the builder and the home screen; `music.js` is the adaptive score
 - `public/`: page shells and bundled fonts (OFL)
 
