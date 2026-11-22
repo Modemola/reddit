@@ -1,9 +1,9 @@
-// VAULT client: the job sheet, the vaults and the builder. Ported from the prototype in prototype/vault/.
+// VAULT client: the home screen, the vaults and the builder. Ported from the prototype in prototype/vault/.
 // Rules come from the shared engine; results are decided by the server replaying each run.
 import { showToast } from '@devvit/web/client';
 import { Endpoint } from '../shared/api.ts';
 import { advanceGuards, camDir, DIRS, danger, guardPos, HEARING, laserOn, parse, pebbleTargets, ray, solve, startState, step } from '../shared/engine.ts';
-import { bestMoves, deadliness, themeFor, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEEPS, W } from '../shared/vault.ts';
+import { deadliness, themeFor, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEEPS, W } from '../shared/vault.ts';
 import { GIF } from './gif.js';
 import { MusicPlayer } from './music.js';
 const $ = id => document.getElementById(id);
@@ -666,7 +666,6 @@ const escapeHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<':
 function crowdLine() { return crowdStatus === 'off' ? 'Tonight’s vaults couldn’t be loaded. The training heist still works; check your connection and reopen the post for the rest.' : 'Loading tonight’s vaults…'; }
 
 // ---------- builder ----------
-function hash(n) { n = Math.sin(n * 127.1 + 311.7) * 43758.5453; return n - Math.floor(n); }
 let PARTS = partsFor(dayNo);
 const PART_NAMES = { wall: ['wall', 'walls'], guard: ['guard', 'guards'], laser: ['laser', 'lasers'], cam: ['camera', 'cameras'] };
 const partsLine = () => Object.entries(PARTS).filter(([, n]) => n).map(([k, n]) => `${n} ${PART_NAMES[k][n === 1 ? 0 : 1]}`).join(', ');
@@ -1041,10 +1040,6 @@ async function submitAttempt(key, moves) {
   } catch (e) { toast(e.message); }
 }
 function refresh() { if (view === 'home') renderHome(); else if (view === 'play') renderPlay(); else if (view === 'build') check(); }
-async function copyResult(cls) {
-  const text = `VAULT Night ${dayNo + 1} · ${G.L.name} · ${cls === 'won' ? `cracked in ${G.moves} (best ${G.best})` : `caught on move ${G.moves}`}`;
-  try { await navigator.clipboard.writeText(text); toast('Copied. Paste it in the comments.'); } catch { toast(text); }
-}
 function toast(t) { showToast(t); }
 // How to play: a card with every rule, open any time from the ? button in the header.
 $('help').onclick = () => { sfx.wake(); $('howto').hidden = false; $('howto-close').focus(); };
