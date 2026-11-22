@@ -96,6 +96,16 @@ test('player vault checks', () => {
     cams: [],
   }
   assert.equal(checkPlayerLevel(ok, parts), null)
+  // names with hidden or direction-flipping characters are refused
+  for (const bad of ['Moth\u202EBox', 'Moth\u200BBox', 'Moth\nBox'])
+    assert.match(
+      checkPlayerLevel({...ok, name: bad}, parts) ?? '',
+      /characters/,
+    )
+  assert.equal(
+    checkPlayerLevel({...ok, name: 'Caf\u00e9 Noir ☕'}, parts),
+    null,
+  )
   assert.match(
     checkPlayerLevel(
       {...ok, guards: [ok.guards[0], ok.guards[0], ok.guards[0]]},

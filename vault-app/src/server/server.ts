@@ -302,7 +302,7 @@ async function routePublish(
   if (problem)
     return {error: `That vault can’t be published: ${problem}.`, status: 400}
   const level: Level = {
-    name: req.level.name.trim().slice(0, 24),
+    name: req.level.name.trim().replace(/\s+/g, ' ').slice(0, 24),
     map: req.level.map,
     guards: req.level.guards ?? [],
     lasers: req.level.lasers ?? [],

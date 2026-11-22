@@ -271,12 +271,18 @@ const isXY = (p: unknown): p is XY =>
   p.length === 2 &&
   p.every(n => Number.isInteger(n) && n >= 0 && n < 9)
 
+/** Control and formatting characters (zero-width, right-to-left overrides and the like). */
+export const HIDDEN_CHARS = /[\p{Cc}\p{Cf}]/u
+
 /** Checks the shape of a player vault and that it fits tonight's parts. Returns an error message or null. */
 export function checkPlayerLevel(l: unknown, parts: Parts): string | null {
   if (!l || typeof l !== 'object') return 'it isn’t a vault'
   const v = l as Partial<Level>
   if (typeof v.name !== 'string' || !v.name.trim() || v.name.length > 24)
     return 'the name must be 1 to 24 characters'
+  // invisible and direction-flipping characters could make a name pose as something else
+  if (HIDDEN_CHARS.test(v.name))
+    return 'the name has characters that can’t be shown'
   if (!Array.isArray(v.map) || v.map.length !== H)
     return 'the floor plan is damaged'
   if (

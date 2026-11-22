@@ -941,7 +941,12 @@ $('bboard').addEventListener('pointerup', e => {
 $('bboard').addEventListener('pointercancel', () => { endPaint(); if (trace) { trace = null; B.painting = false; pushHistory(); } });
 $('b-undo').onclick = () => undo();
 addEventListener('keydown', e => { if (view === 'build' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && e.target.tagName !== 'INPUT') { e.preventDefault(); undo(); } });
-$('vaultName').addEventListener('input', e => { B.d.name = e.target.value.slice(0, 24); saveDraft(); });
+$('vaultName').addEventListener('input', e => {
+  // invisible characters are dropped as you type, so the server never has to refuse the name
+  const clean = e.target.value.replace(/[\p{Cc}\p{Cf}]/gu, '').slice(0, 24);
+  if (clean !== e.target.value) e.target.value = clean;
+  B.d.name = clean; saveDraft();
+});
 // A random vault from tonight's parts: try a few, keep the trickiest one that can still be cracked.
 function surprise() {
   const rnd = n => Math.floor(Math.random() * n);
