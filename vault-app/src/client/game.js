@@ -742,7 +742,7 @@ function routeTap(p) {
   if (eq(p, last) && g.path.length > 1) { g.path.pop(); changed(); return; }
   if (eq(p, last)) { B.routing = null; renderBuilder(); return; }
   const adj = Math.abs(p[0] - last[0]) + Math.abs(p[1] - last[1]) === 1;
-  if (!adj || !inside(...p) || occupant(...p) || g.path.length >= 6) { if (!adj) toast('Routes go one tile at a time. Tap a tile next to the end of the route.'); else if (g.path.length >= 6) toast('A route can be at most 6 tiles.'); return; }
+  if (!adj || !inside(...p) || occupant(...p) || g.path.length >= 6) { if (!adj) toast('Routes go one tile at a time. Tap a tile next to the end of the route.'); else if (g.path.length >= 6) toast('A route can be at most 6 tiles.'); else if (inside(...p)) toast('That tile is taken. Routes go over open floor.'); return; }
   g.path.push(p); changed();
 }
 function removeOcc(o) {
@@ -798,7 +798,7 @@ function openBuilder() {
   $('b-undo').disabled = B.hist.length < 2;
   const tip = $('b-tip');
   if (!tipsSeen.builder) {
-    tip.innerHTML = 'Not sure where to start? Tap <strong>Surprise me</strong> for a layout from tonight’s parts, then make it meaner.' + (PARTS.guard ? ' Thieves carry one <strong>pebble</strong> that turns nearby guards, and the checker counts it, so a guard alone in a corridor won’t stop anyone.' : ' The meter under the board shows how hard it is.');
+    tip.innerHTML = 'Stuck? Tap <strong>Surprise me</strong>, then make it meaner.' + (PARTS.guard ? ' Thieves carry a <strong>pebble</strong> that turns nearby guards, so a lone guard won’t stop them.' : ' The meter under the board shows how hard it is.');
     tip.hidden = false; tipsSeen.builder = 1; try { localStorage.setItem('vault:tips', JSON.stringify(tipsSeen)); } catch {}
   } else tip.hidden = true;
   $('vaultName').value = B.d.name || '';
@@ -806,7 +806,7 @@ function openBuilder() {
 }
 function renderBuilder() {
   const d = B.d, used = { wall: wallsUsed(), guard: d.guards.length, laser: d.lasers.length, cam: d.cams.length };
-  const th = themeFor(dayNo); $('b-night').textContent = th ? th.name : 'Night ' + (dayNo + 1);
+  const th = themeFor(dayNo); $('b-night').textContent = th ? th.name : ''; // the header already says which night
   const tools = [['wall', 'Wall', 'var(--wall)'], ['guard', 'Guard', 'var(--guard)'], ['laser', 'Laser', 'var(--laser)'], ['cam', 'Camera', 'var(--cam)'], ['gem', 'Move gem', 'var(--gem)'], ['erase', 'Erase', 'var(--muted)']];
   $('parts').innerHTML = tools.filter(([k]) => !(k in PARTS) || PARTS[k] > 0).map(([k, l, c]) => `<button type="button" data-k="${k}" class="${B.tool === k ? 'on' : ''}"><span><i style="--c:${c}"></i>${l}</span><span class="c">${k in PARTS ? `${PARTS[k] - used[k]} left` : '&nbsp;'}</span></button>`).join('');
   $('parts').querySelectorAll('button').forEach(b => b.onclick = () => { B.tool = b.dataset.k; B.routing = null; B.sel = null; renderBuilder(); });
@@ -816,7 +816,7 @@ function renderBuilder() {
   const say = t => { const s = document.createElement('span'); s.textContent = t; I.appendChild(s); };
   const s = B.sel;
   if (B.routing != null) {
-    say('Tap tiles next to the guard to draw its route. Tap the end again to undo.');
+    say('Drag from the guard, or tap tile by tile, to draw its route (up to 6 tiles). Tap the end again to undo.');
     chip('Done', true, () => { B.routing = null; renderBuilder(); });
   } else if (s?.kind === 'guard' && d.guards[s.i]) {
     const g = d.guards[s.i];
@@ -834,7 +834,9 @@ function renderBuilder() {
     say('Camera:'); SWEEPS.forEach((sw, i) => chip(['↕ up/down', '↔ left/right', '↻ clockwise', '↺ anticlockwise'][i], c.dirs.join() === sw.join(), () => { c.dirs = sw; changed(); }));
     chip('Remove', false, () => { removeOcc(s); B.sel = null; changed(); });
   } else {
-    say({ wall: 'Tap or drag across the floor to place walls; tap or drag over walls to remove them.', guard: 'Tap floor to place a guard, then draw its route.', laser: 'Tap a wall to mount a laser on it.', cam: 'Tap floor to place a camera.', gem: 'Tap a floor tile in the top half to move the gem.', erase: 'Tap or drag over parts to remove them.' }[B.tool]);
+    const placed = { guard: [d.guards.length, 'guards'], laser: [d.lasers.length, 'lasers'], cam: [d.cams.length, 'cameras'] }[B.tool];
+    if (placed && placed[0] >= (PARTS[B.tool] || 0)) say(`All tonight’s ${placed[1]} are placed. Tap one to change it, or erase it to place it somewhere else.`);
+    else say({ wall: 'Tap or drag across the floor to place walls; tap or drag over walls to remove them.', guard: 'Tap floor to place a guard, then drag out its route.', laser: 'Tap a wall to mount a laser on it.', cam: 'Tap floor to place a camera.', gem: 'Tap a floor tile in the top half to move the gem.', erase: 'Tap or drag over parts to remove them.' }[B.tool]);
   }
 }
 const BFX = { parts: [], rings: [], last: 0, hover: null };
@@ -897,12 +899,19 @@ function paintTile(x, y) {
   if (B.tool === 'erase' && (!occ || occ.kind === 'gem')) return;
   tapWithFeedback(x, y);
 }
+let trace = null;
 $('bboard').addEventListener('pointerdown', e => {
   const t = tileAt(e); if (!t) return;
   sfx.wake();
   const occ = occupant(...t);
   // tapping a guard, laser or camera selects it, whatever tool is active
   const selecting = B.tool === 'wall' && occ && occ.kind !== 'wall';
+  // drawing a route: press on its end and drag through open floor (back over the last step undoes it)
+  const rg = B.routing != null && B.d.guards[B.routing];
+  if (rg && eq(t, rg.path[rg.path.length - 1])) {
+    try { $('bboard').setPointerCapture(e.pointerId); } catch {}
+    trace = { moved: false }; B.painting = true; paint = null; return;
+  }
   if ((B.tool === 'wall' || B.tool === 'erase') && B.routing == null && !selecting) {
     try { $('bboard').setPointerCapture(e.pointerId); } catch {}
     paint = { seen: new Set(), adding: B.tool === 'wall' && occupant(...t)?.kind !== 'wall' };
@@ -913,14 +922,22 @@ $('bboard').addEventListener('pointermove', e => {
   const t = tileAt(e);
   BFX.hover = t && e.pointerType === 'mouse' ? t : null;
   if (paint && t) paintTile(...t);
+  if (trace && t) {
+    const g = B.d.guards[B.routing]; if (!g) return;
+    const last = g.path[g.path.length - 1], prev = g.path[g.path.length - 2];
+    if (eq(t, last)) return;
+    if (prev && eq(t, prev)) { g.path.pop(); trace.moved = true; changed(); return; }
+    if (Math.abs(t[0] - last[0]) + Math.abs(t[1] - last[1]) === 1 && inside(...t) && !occupant(...t) && g.path.length < 6) { g.path.push(t); trace.moved = true; changed(); }
+  }
 });
 $('bboard').addEventListener('pointerleave', () => { BFX.hover = null; });
 const endPaint = () => { if (!paint) return; paint = null; B.painting = false; pushHistory(); };
 $('bboard').addEventListener('pointerup', e => {
   if (paint) { endPaint(); return; }
+  if (trace) { const moved = trace.moved; trace = null; B.painting = false; if (moved) { pushHistory(); return; } }
   const t = tileAt(e); if (t) tapWithFeedback(...t);
 });
-$('bboard').addEventListener('pointercancel', endPaint);
+$('bboard').addEventListener('pointercancel', () => { endPaint(); if (trace) { trace = null; B.painting = false; pushHistory(); } });
 $('b-undo').onclick = () => undo();
 addEventListener('keydown', e => { if (view === 'build' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && e.target.tagName !== 'INPUT') { e.preventDefault(); undo(); } });
 $('vaultName').addEventListener('input', e => { B.d.name = e.target.value.slice(0, 24); saveDraft(); });
