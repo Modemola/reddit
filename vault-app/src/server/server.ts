@@ -41,7 +41,9 @@ import {
   getStats,
   getStreak,
   getVault,
+  isRemoved,
   nightOwners,
+  nightTotals,
   rankCrack,
   recordAttempt,
   releaseShare,
@@ -108,7 +110,13 @@ async function route(
       case Endpoint.OnNewNight:
         // automatic posts: at most one per night, even if the install and the nightly job overlap
         if (await redis.hSetNX('nightposts', String(tonight()), '1'))
-          await createNightPost()
+          try {
+            await createNightPost()
+          } catch (err) {
+            // let a retry (or the next trigger) try again
+            await redis.hDel('nightposts', [String(tonight())])
+            throw err
+          }
         rsp = {}
         break
       default:
@@ -180,16 +188,20 @@ async function playerVaults(
 async function routeInit(): Promise<InitRsp> {
   const night = tonight()
   const userId = context.userId ?? null
-  const [username, progress, house, vaults, streak, isMod] = await Promise.all([
-    reddit.getCurrentUsername().catch(() => undefined),
-    userId ? getProgress(userId) : Promise.resolve({}),
-    Promise.all(HOUSE.map((_, i) => getStats(houseKey(i)))),
-    playerVaults(night, userId),
-    userId
-      ? getStreak(userId, night)
-      : Promise.resolve({count: 0, best: 0, tonight: false}),
-    isModerator(),
-  ])
+  const [username, progress, house, vaults, streak, isMod, removed, totals] =
+    await Promise.all([
+      reddit.getCurrentUsername().catch(() => undefined),
+      userId ? getProgress(userId) : Promise.resolve({}),
+      Promise.all(HOUSE.map((_, i) => getStats(houseKey(i)))),
+      playerVaults(night, userId),
+      userId
+        ? getStreak(userId, night)
+        : Promise.resolve({count: 0, best: 0, tonight: false}),
+      isModerator(),
+      userId ? isRemoved(playerKey(userId, night)) : Promise.resolve(false),
+      nightTotals(night),
+    ])
+  const mine = vaults.find(v => v.owner === userId) ?? null
   const houseStats: InitRsp['house'] = {}
   house.forEach((s, i) => {
     houseStats[houseKey(i)] = s
@@ -201,10 +213,13 @@ async function routeInit(): Promise<InitRsp> {
     parts: partsFor(night),
     progress,
     house: houseStats,
-    mine: vaults.find(v => v.owner === userId) ?? null,
+    mine,
     others: vaults.filter(v => v.owner !== userId),
     streak,
     isMod,
+    removed: !mine && removed,
+    tonight: totals,
+    now: Date.now(),
   }
 }
 
@@ -303,10 +318,24 @@ async function routePublish(
     return {error: `That vault can’t be published: ${problem}.`, status: 400}
   const level: Level = {
     name: req.level.name.trim().replace(/\s+/g, ' ').slice(0, 24),
-    map: req.level.map,
-    guards: req.level.guards ?? [],
-    lasers: req.level.lasers ?? [],
-    cams: req.level.cams ?? [],
+    map: req.level.map.slice(),
+    // rebuilt from the checked fields only: nothing else the client sent is stored or served
+    guards: (req.level.guards ?? []).map(g => ({
+      path: g.path.map(([x, y]) => [x, y] as [number, number]),
+      see: g.see,
+      ...(g.face ? {face: g.face} : {}),
+    })),
+    lasers: (req.level.lasers ?? []).map(l => ({
+      at: [l.at[0], l.at[1]] as [number, number],
+      dir: l.dir,
+      on: l.on,
+      off: l.off,
+    })),
+    cams: (req.level.cams ?? []).map(c => ({
+      at: [c.at[0], c.at[1]] as [number, number],
+      dirs: c.dirs.slice(),
+      ...(c.see ? {see: c.see} : {}),
+    })),
   }
   const best = bestMoves(level)
   if (!best)
@@ -340,7 +369,7 @@ async function routeShare(
   const postId = context.postId
   if (!userId || !postId)
     return {error: 'Log in to Reddit to post your run.', status: 401}
-  const req = await readJson<ShareReq>(reqMsg)
+  const req = await readJson<ShareReq>(reqMsg, MAX_SHARE_BODY)
   if (
     typeof req?.key !== 'string' ||
     !Array.isArray(req.moves) ||
@@ -388,7 +417,14 @@ async function routeShare(
               .animatedImage({mediaUrl: gifUrl, caption: line}),
             runAs,
           })
-        : reddit.submitComment({id: postId, text: line, runAs})
+        : reddit.submitComment({
+            id: postId,
+            // rich text, never Markdown: a vault name can't become a link or a mention
+            richtext: new RichTextBuilder().paragraph(p =>
+              p.text({text: line}),
+            ),
+            runAs,
+          })
     let comment: Awaited<ReturnType<typeof post>>
     try {
       comment = await post(text, 'USER')
@@ -424,19 +460,23 @@ async function routeMenuNewPost(): Promise<UiResponse> {
   }
 }
 
-/** The largest request body read: a shared GIF plus its moves, with room to spare. */
-const MAX_BODY = MAX_GIF_CHARS + 64_000
+/** Request body limits: a shared run carries a GIF; everything else is small. */
+const MAX_BODY = 64_000
+const MAX_SHARE_BODY = MAX_GIF_CHARS + 64_000
 
-async function readJson<T>(reqMsg: IncomingMessage): Promise<T> {
+async function readJson<T>(
+  reqMsg: IncomingMessage,
+  limit = MAX_BODY,
+): Promise<T> {
   const chunks: Uint8Array[] = []
   let size = 0
   reqMsg.on('data', (chunk: Uint8Array) => {
     size += chunk.length
-    if (size <= MAX_BODY) chunks.push(chunk)
+    if (size <= limit) chunks.push(chunk)
   })
   await once(reqMsg, 'end')
   // an oversized body reads as nothing, which every route rejects as unreadable
-  if (size > MAX_BODY) return undefined as T
+  if (size > limit) return undefined as T
   return JSON.parse(`${Buffer.concat(chunks)}`)
 }
 

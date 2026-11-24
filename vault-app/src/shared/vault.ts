@@ -266,10 +266,13 @@ export const playerKey = (owner: string, night: number) => `p_${owner}_${night}`
 
 const isDir = (d: unknown): d is Dir =>
   d === 'U' || d === 'D' || d === 'L' || d === 'R'
+/** A tile on the board (x across 0..W-1, y down 0..H-1). */
 const isXY = (p: unknown): p is XY =>
   Array.isArray(p) &&
   p.length === 2 &&
-  p.every(n => Number.isInteger(n) && n >= 0 && n < 9)
+  p.every(n => Number.isInteger(n) && n >= 0) &&
+  (p[0] as number) < W &&
+  (p[1] as number) < H
 
 /** Control and formatting characters (zero-width, right-to-left overrides and the like). */
 export const HIDDEN_CHARS = /[\p{Cc}\p{Cf}]/u
@@ -331,7 +334,8 @@ export function checkPlayerLevel(l: unknown, parts: Parts): string | null {
       x =>
         isXY(x.at) &&
         isDir(x.dir) &&
-        RHYTHMS.some(([on, off]) => on === x.on && off === x.off),
+        RHYTHMS.some(([on, off]) => on === x.on && off === x.off) &&
+        (x.phase === undefined || x.phase === 0),
     )
   )
     return 'a laser’s settings are invalid'
@@ -345,6 +349,31 @@ export function checkPlayerLevel(l: unknown, parts: Parts): string | null {
     )
   )
     return 'a camera’s settings are invalid'
+  // The same placement rules the builder uses, so a modified client can't publish what the builder can't make.
+  const tile = ([x, y]: XY) => v.map?.[y]?.[x]
+  const interiorFloor = (p: XY) =>
+    p[0] > 0 && p[1] > 0 && p[0] < W - 1 && p[1] < H - 1 && tile(p) === '.'
+  const key = (p: XY) => `${p[0]},${p[1]}`
+  const taken = new Set<string>()
+  for (const c of cams) {
+    if (!interiorFloor(c.at) || taken.has(key(c.at)))
+      return 'a camera must stand on open floor'
+    taken.add(key(c.at))
+  }
+  for (const g of guards)
+    for (const [i, p] of g.path.entries()) {
+      const prev = g.path[i - 1]
+      if (prev && Math.abs(p[0] - prev[0]) + Math.abs(p[1] - prev[1]) !== 1)
+        return 'a guard’s route must go one tile at a time'
+      if (!interiorFloor(p) || taken.has(key(p)))
+        return 'a guard’s route must stay on open floor'
+      taken.add(key(p))
+    }
+  for (const l of lasers) {
+    if (tile(l.at) !== '#' || taken.has(key(l.at)))
+      return 'a laser must be mounted on its own wall tile'
+    taken.add(key(l.at))
+  }
   // walls placed inside the vault, including ones a laser is mounted on
   let inner = 0
   for (let y = 1; y < H - 1; y++)

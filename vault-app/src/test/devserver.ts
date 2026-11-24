@@ -48,10 +48,12 @@ r.zAdd = async (k: string, ...m: {member: string; score: number}[]) => {
   for (const x of m) z.set(x.member, x.score)
   return m.length
 }
-r.zRange = async (k: string) =>
+r.zRange = async (k: string, start = 0, stop = -1) =>
   [...(zsets.get(k) ?? new Map()).entries()]
     .sort((a, b) => b[1] - a[1])
+    .slice(start, stop < 0 ? undefined : stop + 1)
     .map(([member, score]) => ({member, score}))
+r.zCard = async (k: string) => zsets.get(k)?.size ?? 0
 let currentName = 'local_tester'
 reddit.getCurrentUsername = async () => currentName
 // the user t2_mod (send header x-test-user: t2_mod) moderates the local subreddit

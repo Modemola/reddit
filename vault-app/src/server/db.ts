@@ -6,6 +6,8 @@
 //   people:{key}       hash  userId -> 1                                 who has tried it
 //   marks:{key}        hash  tile index -> count                         where people were caught
 //   prog:{userId}      hash  key -> Progress (JSON)                      one player's record
+//   nightstats:{n}     hash  caught                                      tonight's counted busts, for the feed card
+//   tally:{key}        hash  userId:busts, userId:won                    how much each player has moved a vault's numbers
 import {redis} from '@devvit/web/server'
 import type {
   PlayerVault,
@@ -15,7 +17,7 @@ import type {
   VaultStats,
 } from '../shared/api.ts'
 import type {Level} from '../shared/engine.ts'
-import {deadliness} from '../shared/vault.ts'
+import {deadliness, nightOf} from '../shared/vault.ts'
 
 export async function getStats(key: string): Promise<VaultStats> {
   const [s, people, marks] = await Promise.all([
@@ -79,14 +81,32 @@ export async function recordAttempt(
   await redis.hSet(`prog:${userId}`, {[key]: JSON.stringify(next)})
   // One person can shape a vault's public numbers only so much: their first crack
   // always counts, but busts after they cracked it, or past their first few, don't
-  // (nobody can paint the floor red alone).
-  const counts =
-    countsForStats && !prev.won && (result === 'won' || prev.tries < STAT_TRIES)
+  // (nobody can paint the floor red alone). Decided with atomic Redis operations, so
+  // sending many runs at once doesn't get around it.
+  let counts = false
+  // (the player's own record still counts too, so history from before the tally can't be replayed)
+  if (
+    countsForStats &&
+    !prev.won &&
+    (result === 'won' || prev.tries < STAT_TRIES)
+  ) {
+    const tally = `tally:${key}`
+    if (result === 'won') {
+      counts = !!(await redis.hSetNX(tally, `${userId}:won`, '1'))
+      // after a crack, none of this player's busts count any more
+      if (counts) await redis.hIncrBy(tally, `${userId}:busts`, 1_000_000)
+    } else {
+      counts = (await redis.hIncrBy(tally, `${userId}:busts`, 1)) <= STAT_TRIES
+    }
+  }
   if (counts) {
     await redis.hSet(`people:${key}`, {[userId]: '1'})
     await redis.hIncrBy(`stats:${key}`, 'tries', 1)
     if (result === 'caught') {
       await redis.hIncrBy(`stats:${key}`, 'caught', 1)
+      // filed under the vault's own night (a player vault), or tonight (a training vault)
+      const night = /^p_.+_(\d+)$/.exec(key)?.[1] ?? nightOf(Date.now())
+      await redis.hIncrBy(`nightstats:${night}`, 'caught', 1)
       if (caughtAt !== null)
         await redis.hIncrBy(`marks:${key}`, String(caughtAt), 1)
     } else {
@@ -146,6 +166,22 @@ export async function saveVault(
   })
   await redis.zAdd(`night:${night}:deadly`, {member: vault.owner, score: 0})
   return true
+}
+
+/** Tonight's real totals for the feed card: vaults built and thieves caught (counted runs only). */
+export async function nightTotals(
+  night: number,
+): Promise<{built: number; caught: number}> {
+  const [built, s] = await Promise.all([
+    redis.zCard(`night:${night}:vaults`),
+    redis.hGetAll(`nightstats:${night}`),
+  ])
+  return {built, caught: Number(s.caught ?? 0)}
+}
+
+/** Whether a moderator removed this vault. */
+export async function isRemoved(key: string): Promise<boolean> {
+  return !!(await redis.hGetAll(`vault:${key}`)).removed
 }
 
 /**

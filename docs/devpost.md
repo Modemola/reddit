@@ -55,7 +55,7 @@ A new player never sees a menu first: they land in the first vault, playing. One
 ## Challenges we ran into
 - **Making stealth fair in turns.** Real-time stealth feels unfair on a phone. Turn-based stealth only works if you can read what happens next, so we added next-turn red corners, a guard’s next step, and a flickering beam for a laser about to fire.
 - **Guaranteeing player vaults are beatable.** A level editor is only fun if levels can be finished. The solver had to handle guard routes, laser rhythms, camera sweeps, knockouts and pebble distractions, and still answer instantly while you build.
-- **Trust.** Leaderboards and “caught 37 thieves” only mean something if they can’t be faked, which is why the server replays every run instead of trusting the client. It also caps how much one player can move a vault’s public numbers, so nobody can paint a floor red alone.
+- **Trust.** Leaderboards and “caught 37 thieves” only mean something if they can’t be faked, which is why the server replays every run instead of trusting the client. It also caps how much one player can move a vault’s public numbers (atomically, so flooding the server doesn’t help), checks every published vault against the builder’s own placement rules, and posts shared runs as rich text so a vault name can’t smuggle in a link.
 
 ## Accomplishments we’re proud of
 - A level editor where an impossible level simply can’t be published.

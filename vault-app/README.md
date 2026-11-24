@@ -52,7 +52,7 @@ Moderators of the subreddit see a **Remove** button on player vaults (two taps).
 
 ## Fair play
 
-The client sends only its moves. The server replays them with the same rules engine to decide whether you cracked a vault or got caught, so nobody can fake a crack or pad a vault’s numbers. One player can only move a vault’s public numbers so far: their first crack always counts, but busts after a crack or past their first ten don’t. Player vaults are validated against tonight’s parts and re-solved on the server before they go live.
+The client sends only its moves. The server replays them with the same rules engine to decide whether you cracked a vault or got caught, so nobody can fake a crack or pad a vault’s numbers. One player can only move a vault’s public numbers so far: their first crack always counts, but busts after a crack or past their first ten don’t (decided with atomic Redis operations, so sending many runs at once doesn’t get around it). Player vaults are checked against the same placement rules as the builder, rebuilt from their checked fields only, and shared runs are posted as rich text, so a vault name can never become a link or a mention. Player vaults are validated against tonight’s parts and re-solved on the server before they go live.
 
 ## Development
 

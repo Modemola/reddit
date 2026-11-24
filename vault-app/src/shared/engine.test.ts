@@ -96,6 +96,59 @@ test('player vault checks', () => {
     cams: [],
   }
   assert.equal(checkPlayerLevel(ok, parts), null)
+  // parts follow the builder's own placement rules
+  const g = (path: number[][]) => ({...ok, guards: [{path, see: 2}]})
+  const bad = (l: unknown, re: RegExp) =>
+    assert.match(checkPlayerLevel(l, parts) ?? 'accepted', re)
+  bad(
+    g([
+      [1, 4],
+      [8, 1],
+    ]),
+    /route|invalid/,
+  ) // off the board
+  bad(
+    g([
+      [1, 4],
+      [3, 4],
+    ]),
+    /one tile at a time/,
+  ) // a jump
+  bad(
+    g([
+      [2, 4],
+      [2, 3],
+    ]),
+    /open floor/,
+  ) // into a wall
+  bad(g([[3, 1]]), /open floor/) // on the gem
+  bad({...ok, guards: [ok.guards[0], {path: [[3, 4]], see: 2}]}, /open floor/) // two guards on one tile
+  const laser = (l: object) => ({
+    ...ok,
+    lasers: [{at: [0, 5], dir: 'R', on: 2, off: 2, ...l}],
+  })
+  assert.equal(checkPlayerLevel(laser({}), parts), null)
+  bad(laser({phase: -3}), /laser/) // a phase that breaks its rhythm
+  bad(laser({at: [3, 5]}), /mounted on its own wall/) // on the floor
+  bad({...ok, cams: [{at: [2, 3], dirs: ['U', 'D']}]}, /camera/) // inside a wall
+  // two lasers on one tile (a box with two lasers, so the count isn't what stops it)
+  assert.match(
+    checkPlayerLevel(
+      {
+        ...ok,
+        lasers: [
+          {at: [0, 5], dir: 'R', on: 2, off: 2},
+          {at: [0, 5], dir: 'U', on: 2, off: 2},
+        ],
+      },
+      {...parts, laser: 2},
+    ) ?? 'accepted',
+    /own wall/,
+  )
+  assert.equal(
+    checkPlayerLevel({...ok, cams: [{at: [5, 6], dirs: ['U', 'D']}]}, parts),
+    null,
+  )
   // names with hidden or direction-flipping characters are refused
   for (const bad of ['Moth\u202EBox', 'Moth\u200BBox', 'Moth\nBox'])
     assert.match(

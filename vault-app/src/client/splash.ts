@@ -18,11 +18,15 @@ async function loadStats(): Promise<void> {
     const init: InitRsp = await rsp.json()
     const theme = themeFor(init.night)
     nightEl.textContent = `Night ${init.night + 1}${theme ? ` · ${theme.name}` : ''}`
-    const built = init.others.length + (init.mine ? 1 : 0)
-    const caught = [
-      ...Object.values(init.house),
-      ...init.others.map(v => v.stats),
-    ].reduce((n, s) => n + s.caught, 0)
+    // tonight's real totals from the server (older servers: fall back to summing the listed vaults)
+    const built =
+      init.tonight?.built ?? init.others.length + (init.mine ? 1 : 0)
+    const caught =
+      init.tonight?.caught ??
+      [...init.others, ...(init.mine ? [init.mine] : [])].reduce(
+        (n, v) => n + v.stats.caught,
+        0,
+      )
     const parts: string[] = []
     if (built)
       parts.push(`${built} ${built === 1 ? 'vault' : 'vaults'} built tonight`)
@@ -141,14 +145,21 @@ function drawScene(now: number): void {
   sctx.fill()
   sctx.restore()
 }
-let running = true
+// exactly one frame is ever pending, however often the page is hidden and shown
+let pending = 0
 function loop(now: number): void {
+  pending = 0
   drawScene(now)
-  if (running && !still) requestAnimationFrame(loop)
+  if (!still && document.visibilityState === 'visible') schedule()
+}
+function schedule(): void {
+  if (!pending) pending = requestAnimationFrame(loop)
 }
 document.addEventListener('visibilitychange', () => {
-  const was = running
-  running = document.visibilityState === 'visible'
-  if (running && !was) requestAnimationFrame(loop)
+  if (document.visibilityState === 'visible') schedule()
+  else if (pending) {
+    cancelAnimationFrame(pending)
+    pending = 0
+  }
 })
-requestAnimationFrame(loop)
+schedule()

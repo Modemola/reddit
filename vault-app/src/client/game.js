@@ -10,6 +10,9 @@ const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const C = Object.fromEntries(['night', 'floor', 'floor2', 'grain', 'mortar', 'wall', 'wallside', 'text', 'muted', 'you', 'gem', 'guard', 'laser', 'cam'].map(k => [k, css('--' + k)]));
 let dayNo = nightOf(Date.now());
+// how far this device's clock is from the server's (set from init), so the night changes for
+// everyone at the server's midnight, whichever way a device's clock is off
+let clockOffset = 0;
 const W7 = W, H9 = H;
 const LEVELS = HOUSE;
 
@@ -234,9 +237,13 @@ const parseL = L => parse(L);
 // ---------- views ----------
 let view = 'home';
 // a new night started while the game was open: tonight's parts and vaults are different, so start fresh
-function rolledOver() { return INIT && nightOf(Date.now()) !== dayNo; }
+function rolledOver() { return !!INIT && nightOf(Date.now() + clockOffset) !== INIT.night; }
 function show(v) {
-  if (v !== 'play' && rolledOver()) { toast('A new night has started. Loading tonight’s vaults…'); setTimeout(() => location.reload(), 900); return; }
+  if (v !== 'play' && rolledOver()) {
+    // a run that just ended still counts before the page reloads
+    if (G.over === 'pending' && G.ending?.run === G.run) { settleQuietly(G.ending); G.run++; }
+    toast('A new night has started. Loading tonight’s vaults…'); setTimeout(() => location.reload(), 900); return;
+  }
   view = v; if (v !== 'play') music.play(v === 'home' ? 'title' : null); for (const k of ['home', 'play', 'build']) $('v-' + k).hidden = k !== v; if (v === 'home') renderHome(); if (v === 'build') openBuilder(); window.scrollTo(0, 0); }
 $('home-link').onclick = () => show('home');
 $('home-link').onkeydown = e => { if (e.key === 'Enter') show('home'); };
@@ -273,8 +280,18 @@ function fitBoard() {
   const over = $('wait').getBoundingClientRect().bottom + scrollY + 8 - innerHeight;
   if (over > 0) { box.style.maxWidth = Math.max(200, box.clientWidth - over * 7 / 9) + 'px'; P.size(G.V); }
 }
+// A run that ended but whose card hasn't shown yet (the player restarted or left right away)
+// still counts: its result is saved and sent, just without the card.
+function settleQuietly(e) {
+  if (e.key === 'test') return;
+  const prev = progress[e.key] || { tries: 0, won: false, moves: 0 };
+  progress[e.key] = { tries: prev.tries + 1, won: prev.won || e.status === 'won', moves: e.status === 'won' ? (prev.won ? Math.min(prev.moves, e.moves) : e.moves) : prev.moves };
+  if (e.status === 'won') saveGhost(e.key, e.log);
+  submitAttempt(e.key, e.log);
+}
 function play(L, key, label, next, owner) {
-  Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1, tryNo: (progress[key]?.tries || 0) + 1 });
+  if (G.over === 'pending' && G.ending?.run === G.run) settleQuietly(G.ending);
+  Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1, tryNo: (progress[key]?.tries || 0) + 1, run: (G.run || 0) + 1 });
   for (const f of G.frames || []) f.bmp?.close?.();
   G.log = []; G.queue = null; G.face = 'U'; G.gAng = []; G.cAng = []; FX.parts = []; FX.shake = FX.flash = FX.punch = null; G.downAt = {}; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
   G.best = bestFor(key, L, G.V);
@@ -301,7 +318,7 @@ function move(m) {
   G.log.push(m); G.prev = G.s; G.s = n; G.moves++; G.a0 = now; G.anim = 0;
   music.setMood(n.status === 'caught' ? 'chase' : tension(n));
   if (n.status === 'caught' && n.by) { const gi = G.V.guards.findIndex(g => { const p = guardPos(g, n); return p[0] === n.by[0] && p[1] === n.by[1]; }); if (gi >= 0) bark(gi, 'alert', now); }
-  if (n.status !== 'play') { G.endAt = now; G.result = { status: n.status, moves: G.moves, cause: n.cause }; G.over = 'pending'; setTimeout(() => finish(n), n.status === 'caught' ? 900 : 350); }
+  if (n.status !== 'play') { G.endAt = now; G.result = { status: n.status, moves: G.moves, cause: n.cause }; G.over = 'pending'; const run = G.run; G.ending = { run, key: G.key, log: G.log.slice(), moves: G.moves, status: n.status }; setTimeout(() => { if (G.run === run) finish(n); }, n.status === 'caught' ? 900 : 350); }
   renderPlay();
 }
 let bumpT = 0;
@@ -553,7 +570,7 @@ function loadGhost(key, V) {
   let moves; try { moves = JSON.parse(localStorage.getItem('vault:ghost:' + key) || 'null'); } catch { return null; }
   if (!Array.isArray(moves) || !moves.length) return null;
   let st = startState(V); const pos = [st.pos];
-  for (const m of moves) { st = step(V, st, m); if (!st) return null; pos.push(st.pos); }
+  for (const [i, m] of moves.entries()) { st = step(V, st, m); if (!st || st.status === 'caught' || (st.status === 'won' && i < moves.length - 1)) return null; pos.push(st.pos); }
   return st.status === 'won' ? pos : null;
 }
 function saveGhost(key, log) {
@@ -603,6 +620,8 @@ function renderHome() {
       <div class="row"><button class="ghost" id="mine-play" type="button">Play it</button></div>`;
     $('mine').querySelector('h3').textContent = mine.name;
     $('mine-play').onclick = () => play(mine.level, 'test', 'Your vault');
+  } else if (INIT?.removed) {
+    $('mine').innerHTML = '<div class="sub"><b>A moderator removed your vault tonight.</b> You can build a new one tomorrow night. Meanwhile, the training heist and tonight’s other vaults are all yours.</div>';
   } else {
     const th = themeFor(dayNo);
     $('mine').innerHTML = `<div class="sub">${th ? `<b class="theme">Tonight is ${th.name}.</b> ${th.line} ` : ''}Tonight’s parts: <b>${partsLine()}</b>. Build a vault that catches people. You get one a night.</div>${INIT && !INIT.userId ? '<div class="sub"><b>Log in to Reddit</b> to publish your vault and keep your runs. You can still play and test everything.</div>' : ''}<div class="row"><button class="primary" id="go-build" type="button">Build tonight’s vault</button></div>`;
@@ -1019,6 +1038,7 @@ $('b-clear').onclick = () => { const n = B.d.name; B.d = blankDraft(); B.d.name 
 $('b-test').onclick = () => { if (B.verdict === 'ok') { sfx.wake(); play({ ...B.level, name: B.level.name }, 'test', 'Test run'); } };
 $('b-lock').onclick = async () => {
   if (rolledOver()) { show('home'); return; } // yesterday's parts can't be published tonight
+  clearTimeout(checkT); check(); // check the vault as it is right now, not as it was before the last edit
   if (B.verdict !== 'ok' || myBuilt()) return;
   const level = { ...B.level, name: (B.d.name || '').trim() || B.level.name };
   $('b-lock').disabled = true;
@@ -1027,7 +1047,7 @@ $('b-lock').onclick = async () => {
     INIT.mine = rsp.vault; toast('Locked in. Your vault is live tonight.'); show('home');
   } catch (e) { toast(e.message); $('b-lock').disabled = false; }
 };
-function myBuilt() { return INIT?.mine || null; }
+function myBuilt() { return INIT?.mine || (INIT?.removed ? true : null); }
 
 // ---------- server ----------
 let INIT = null, crowdStatus = 'loading', progress = {};
@@ -1040,11 +1060,11 @@ async function api(ep, body) {
 async function load() {
   try {
     INIT = await api(Endpoint.Init); progress = INIT.progress || {}; crowdStatus = 'live';
-    dayNo = INIT.night; PARTS = INIT.parts; $('night').textContent = 'Night ' + (dayNo + 1);
+    dayNo = INIT.night; PARTS = INIT.parts; clockOffset = typeof INIT.now === 'number' ? INIT.now - Date.now() : (INIT.night - nightOf(Date.now())) * 86400000; // (an older server sends no clock: assume whole days off) $('night').textContent = 'Night ' + (dayNo + 1);
   } catch { crowdStatus = 'off'; }
   // someone who has never played starts in the first vault, not on a menu
-  // (without the server, this device's memory decides: no tips seen means a first visit)
-  const firstVisit = INIT ? !Object.keys(progress).length : !Object.keys(tipsSeen).length;
+  // (without the server or a login, this device's memory decides: no tips seen means a first visit)
+  const firstVisit = INIT?.userId ? !Object.keys(progress).length : !Object.keys(tipsSeen).length;
   if (view === 'home' && firstVisit) { playHouse(0); return; }
   refresh();
 }

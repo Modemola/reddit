@@ -41,6 +41,12 @@ export type InitRsp = {
   streak: Streak
   /** True for moderators of this subreddit, who can remove player vaults. */
   isMod: boolean
+  /** True when a moderator removed this player's vault tonight (they can build again tomorrow). */
+  removed?: boolean
+  /** The server's clock (ms), so a device whose clock is off still knows when the night changes. */
+  now?: number
+  /** Tonight's real totals, not limited to the vaults listed. */
+  tonight?: {built: number; caught: number}
 }
 
 /** The client sends only its moves; the server replays them to decide what happened. */

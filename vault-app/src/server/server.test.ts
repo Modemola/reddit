@@ -70,6 +70,7 @@ const fake = {
     for (const m of members) zsets.get(k)?.delete(m)
     return members.length
   },
+  zCard: async (k: string) => zsets.get(k)?.size ?? 0,
   // always highest score first, as the server asks for it (reverse by rank)
   zRange: async (k: string, start = 0, stop = -1) =>
     [...(zsets.get(k) ?? new Map()).entries()]
@@ -78,6 +79,7 @@ const fake = {
       .map(([member, score]) => ({member, score})),
 }
 const posts: string[] = []
+let failPost = false
 const saved: Record<string, unknown> = {}
 let currentUser = 'tester'
 
@@ -110,6 +112,7 @@ before(async () => {
     >
   }
   reddit.submitCustomPost = (async (opts: {title: string}) => {
+    if (failPost) throw Error('rate limited')
     posts.push(opts.title)
     return {url: 'https://reddit.com/r/vaulttest/comments/2/'}
   }) as unknown as typeof reddit.submitCustomPost
@@ -238,6 +241,37 @@ test('the install and the nightly job together make one post a night; its title 
   if (theme) assert.ok(posts[0]!.includes(theme.name))
 })
 
+test('the bust cap holds when one player sends many runs at once', async () => {
+  const runs = Array.from({length: 40}, () =>
+    post<AttemptRsp>(
+      Endpoint.Attempt,
+      {key: 'h1', moves: ['U', 'U', 'U']},
+      't2_flood',
+    ),
+  )
+  await Promise.all(runs)
+  const init = await get<InitRsp>(Endpoint.Init, 't2_watcher')
+  assert.equal(init.house.h1?.caught, STAT_TRIES)
+  assert.equal(
+    Object.values(init.house.h1?.marks ?? {}).reduce((a, b) => a + b, 0),
+    STAT_TRIES,
+  )
+  assert.equal(init.tonight?.caught, STAT_TRIES)
+})
+
+test('a failed nightly post can be retried', async () => {
+  posts.length = 0
+  failPost = true
+  const first = await fetch(`${url}/${Endpoint.OnNewNight}`, {
+    method: 'POST',
+    body: '{}',
+  })
+  failPost = false
+  assert.equal(first.status, 500)
+  await post(Endpoint.OnNewNight, {})
+  assert.equal(posts.length, 1)
+})
+
 // A crackable test vault built from whatever tonight's parts are, so the tests pass on any date.
 const vault = (name = 'Moth Box'): Level => {
   const parts = partsFor(nightOf(Date.now()))
@@ -321,6 +355,30 @@ test('a busy night: your own vault and the deadliest vaults stay listed however 
     init.others.some(v => v.owner === 't2_b64'),
     'the newest is listed',
   )
+})
+
+test('published parts keep only their checked fields; tonight’s totals and a removed vault are reported', async () => {
+  const level = vault('Junk Drawer') as unknown as Record<string, unknown[]>
+  for (const k of ['guards', 'lasers', 'cams'])
+    for (const part of level[k] ?? [])
+      (part as Record<string, unknown>).junk = 'x'.repeat(1000)
+  const pub = await post<PublishRsp>(Endpoint.Publish, {level}, 't2_jd')
+  assert.equal(pub.status, 200)
+  assert.ok(!JSON.stringify(pub.json.vault.level).includes('junk'))
+  const before = await get<InitRsp>(Endpoint.Init, 't2_other')
+  assert.equal(before.tonight?.built, 1)
+  assert.ok(!JSON.stringify(before.others).includes('junk'))
+  // a moderator removes it: its builder is told, and isn't invited to build again tonight
+  const r = await post<RemoveRsp>(
+    Endpoint.Remove,
+    {key: pub.json.vault.key},
+    't2_mod',
+  )
+  assert.equal(r.status, 200)
+  const after = await get<InitRsp>(Endpoint.Init, 't2_jd')
+  assert.equal(after.mine, null)
+  assert.equal(after.removed, true)
+  assert.equal((await get<InitRsp>(Endpoint.Init, 't2_other')).removed, false)
 })
 
 test('publishing: one solvable vault per player per night, and others can crack it', async () => {
@@ -410,9 +468,12 @@ test('sharing a run: server-written text, the GIF attached, once per vault, with
   assert.equal(bust.json.posted, 'text')
   const last = comments.at(-1)!
   assert.equal(last.runAs, 'APP')
-  assert.match(
-    String(last.text),
-    /^u\/tester got caught by a guard in The Lobby on move 2/,
+  // always rich text (never Markdown), so a vault name can't turn into a link or a mention
+  assert.equal(last.text, undefined)
+  assert.ok(
+    String(last.richtext).includes(
+      'u/tester got caught by a guard in The Lobby on move 2',
+    ),
   )
 })
 
