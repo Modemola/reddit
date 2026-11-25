@@ -871,6 +871,30 @@
     .legend[hidden] {
       display: none;
     }
+    /* the web preview's own toast (inside Reddit, Reddit shows toasts) */
+    #ptoast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translate(-50%, 12px);
+      max-width: min(90vw, 420px);
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: #1c2030;
+      color: var(--text);
+      box-shadow: 0 10px 30px #0008;
+      font-size: 0.9rem;
+      opacity: 0;
+      pointer-events: none;
+      transition:
+        opacity 0.2s,
+        transform 0.2s;
+      z-index: 50;
+    }
+    #ptoast.on {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
     .overlay .extras:empty {
       display: none;
     }
@@ -1135,7 +1159,7 @@
             Lock it in
           </button>
         </div>
-        <p class="hint">
+        <p class="hint" id="lock-note">
           Locking in publishes your vault for everyone tonight. You can’t change
           it after that.
         </p>

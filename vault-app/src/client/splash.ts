@@ -6,7 +6,14 @@ const startBtn = document.getElementById('start-btn') as HTMLButtonElement
 const nightEl = document.getElementById('night') as HTMLElement
 const statsEl = document.getElementById('stats') as HTMLElement
 
-startBtn.addEventListener('click', ev => requestExpandedMode(ev, 'game'))
+// The web preview (the Vercel build defines VAULT_PREVIEW) has no Reddit around it and no game server.
+declare const VAULT_PREVIEW: boolean | undefined
+const PREVIEW = typeof VAULT_PREVIEW !== 'undefined' && VAULT_PREVIEW
+
+startBtn.addEventListener('click', ev => {
+  if (PREVIEW) location.href = 'game.html'
+  else requestExpandedMode(ev, 'game')
+})
 nightEl.textContent = `Night ${nightOf(Date.now()) + 1}`
 
 async function loadStats(): Promise<void> {
@@ -53,7 +60,8 @@ async function loadStats(): Promise<void> {
     // the splash works without numbers
   }
 }
-void loadStats()
+if (PREVIEW) statsEl.textContent = 'Web preview · the full game lives on Reddit'
+else void loadStats()
 
 // A guard with a torch patrols along the bottom of the card while the light sweeps.
 // Small, drawn in code, paused when the card is off screen, still for reduced motion.

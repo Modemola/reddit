@@ -7,6 +7,10 @@ import { deadliness, themeFor, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEE
 import { GIF } from './gif.js';
 import { MusicPlayer } from './music.js';
 const $ = id => document.getElementById(id);
+// The web preview (the Vercel build defines VAULT_PREVIEW): no game server, so the training heist and the
+// builder's test runs work, and everything that needs Reddit (tonight's vaults, publishing, comments) says so.
+// eslint-disable-next-line no-undef
+const PREVIEW = typeof VAULT_PREVIEW !== 'undefined' && VAULT_PREVIEW;
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const C = Object.fromEntries(['night', 'floor', 'floor2', 'grain', 'mortar', 'wall', 'wallside', 'text', 'muted', 'you', 'gem', 'guard', 'laser', 'cam'].map(k => [k, css('--' + k)]));
 let dayNo = nightOf(Date.now());
@@ -749,7 +753,7 @@ function removeButton(v) {
   return b;
 }
 const escapeHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-function crowdLine() { return crowdStatus === 'off' ? 'Tonight’s vaults couldn’t be loaded. The training heist still works; check your connection and reopen the post for the rest.' : 'Loading tonight’s vaults…'; }
+function crowdLine() { if (crowdStatus === 'preview') return 'This is the web preview. Tonight’s vaults, building for real and posting runs to the comments all happen inside the VAULT post on Reddit.'; return crowdStatus === 'off' ? 'Tonight’s vaults couldn’t be loaded. The training heist still works; check your connection and reopen the post for the rest.' : 'Loading tonight’s vaults…'; }
 
 // ---------- builder ----------
 let PARTS = partsFor(dayNo);
@@ -862,6 +866,7 @@ function check() {
   if (B.lastLevel !== undefined && B.lastLevel !== level) { v.classList.add('changed'); }
   B.lastLevel = level;
   $('b-lock').disabled = B.verdict !== 'ok' || !!myBuilt();
+  if (PREVIEW) $('lock-note').textContent = 'In the web preview you can build and test-run a vault. Publishing it for everyone happens in the VAULT post on Reddit.';
   $('b-test').disabled = B.verdict !== 'ok';
 }
 // Undo: each committed change is a snapshot of the draft; a drag of walls counts as one change.
@@ -1086,7 +1091,7 @@ $('b-lock').onclick = async () => {
     INIT.mine = rsp.vault; toast('Locked in. Your vault is live tonight.'); show('home');
   } catch (e) { toast(e.message); $('b-lock').disabled = false; }
 };
-function myBuilt() { return INIT?.mine || (INIT?.removed ? true : null); }
+function myBuilt() { return PREVIEW || INIT?.mine || (INIT?.removed ? true : null); }
 
 // ---------- server ----------
 let INIT = null, crowdStatus = 'loading', progress = {};
@@ -1097,6 +1102,7 @@ async function api(ep, body) {
   return json;
 }
 async function load() {
+  if (PREVIEW) { crowdStatus = 'preview'; refresh(); if (view === 'home' && !Object.keys(tipsSeen).length) playHouse(0); return; }
   try {
     INIT = await api(Endpoint.Init); progress = INIT.progress || {}; crowdStatus = 'live';
     dayNo = INIT.night; PARTS = INIT.parts; clockOffset = typeof INIT.now === 'number' ? INIT.now - Date.now() : (INIT.night - nightOf(Date.now())) * 86400000; // (an older server sends no clock: assume whole days off) $('night').textContent = 'Night ' + (dayNo + 1);
@@ -1108,6 +1114,7 @@ async function load() {
   refresh();
 }
 async function submitAttempt(key, moves) {
+  if (PREVIEW) return;
   try {
     const rsp = await api(Endpoint.Attempt, { key, moves });
     progress[key] = rsp.progress;
@@ -1135,7 +1142,13 @@ async function submitAttempt(key, moves) {
   } catch (e) { toast(e.message); }
 }
 function refresh() { if (view === 'home') renderHome(); else if (view === 'play') renderPlay(); else if (view === 'build') check(); }
-function toast(t) { showToast(t); }
+function toast(t) {
+  if (!PREVIEW) { showToast(t); return; }
+  // outside Reddit there is no host to show a toast, so the page shows its own
+  let el = document.getElementById('ptoast');
+  if (!el) { el = document.createElement('div'); el.id = 'ptoast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+  el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2600);
+}
 // How to play: a card with every rule, open any time from the ? button in the header.
 $('help').onclick = () => { sfx.wake(); $('howto').hidden = false; $('howto-close').focus(); };
 $('howto-close').onclick = () => { $('howto').hidden = true; $('help').focus(); };

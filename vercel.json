@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "cd vault-app && npm ci",
+  "buildCommand": "cd vault-app && npm run build:client -- --minify --define:VAULT_PREVIEW=true",
+  "outputDirectory": "vault-app/public",
+  "cleanUrls": true,
+  "rewrites": [{"source": "/", "destination": "/game"}]
+}
