@@ -1,0 +1,57 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "vault-heist",
+  "post": {
+    "entrypoints": {
+      "default": {
+        "entry": "splash.html",
+        "height": "tall",
+        "styles": {
+          "backgroundColor": "#0F1116FF",
+          "backgroundColorDark": "#0F1116FF"
+        }
+      },
+      "game": {
+        "entry": "game.html",
+        "styles": {
+          "backgroundColor": "#0F1116FF",
+          "backgroundColorDark": "#0F1116FF"
+        }
+      }
+    }
+  },
+  "server": {},
+  "menu": {
+    "items": [
+      {
+        "label": "VAULT: post tonight’s vaults",
+        "description": "Create tonight’s VAULT post in this subreddit.",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/on/menu/new-post"
+      }
+    ]
+  },
+  "triggers": {
+    "onAppInstall": "/internal/on/app/install"
+  },
+  "scheduler": {
+    "tasks": {
+      "new-night": {
+        "endpoint": "/internal/on/scheduler/new-night",
+        "cron": "1 0 * * *"
+      }
+    }
+  },
+  "scripts": {
+    "dev": "npm run watch",
+    "build": "npm run build"
+  },
+  "permissions": {
+    "media": true,
+    "reddit": {
+      "enable": true,
+      "scope": "user"
+    }
+  }
+}

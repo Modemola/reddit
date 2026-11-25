@@ -1,0 +1,57 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+  "css": {"formatter": {"enabled": true, "quoteStyle": "single"}},
+  // game.js and music.js are ported as-is from the playtested prototype (prototype/vault/).
+  "files": {
+    "includes": [
+      "**",
+      "!dist/",
+      "!public/*.js*",
+      "!src/client/game.js",
+      "!src/client/music.js",
+      "!src/client/gif.js"
+    ]
+  },
+  "formatter": {
+    "bracketSpacing": false,
+    "enabled": true,
+    "indentStyle": "space"
+  },
+  "html": {"formatter": {"enabled": true}},
+  "javascript": {
+    "formatter": {
+      "arrowParentheses": "asNeeded",
+      "jsxQuoteStyle": "single",
+      "quoteStyle": "single",
+      "semicolons": "asNeeded"
+    }
+  },
+  "linter": {
+    "domains": {"project": "all"},
+    "rules": {
+      "correctness": {
+        // Biome resolves conditional exports without the browser condition,
+        // which reports false positives for `@devvit/web/client` named exports.
+        "noUnresolvedImports": "off"
+      },
+      "nursery": {
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error",
+        "recommended": true
+      },
+      "style": {
+        "noInferrableTypes": "off",
+        // hand-written page CSS is ordered by component, not by specificity
+        "noDescendingSpecificity": "off"
+      },
+      "suspicious": {"noImplicitAnyLet": "off"}
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/**/*.test.ts", "src/test/**"],
+      "linter": {"rules": {"style": {"noNonNullAssertion": "off"}}}
+    }
+  ],
+  "vcs": {"enabled": true, "clientKind": "git", "useIgnoreFile": true}
+}

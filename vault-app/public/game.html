@@ -1,0 +1,1256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    >
+    <link rel="modulepreload" href="game.js">
+    <title>VAULT</title>
+    <style>
+    @font-face {
+      font-family: 'Chakra Petch';
+      font-weight: 500;
+      font-display: swap;
+      src: url(fonts/chakra-petch-latin-500-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'Chakra Petch';
+      font-weight: 700;
+      font-display: swap;
+      src: url(fonts/chakra-petch-latin-700-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-weight: 400;
+      font-display: swap;
+      src: url(fonts/inter-latin-400-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-weight: 500;
+      font-display: swap;
+      src: url(fonts/inter-latin-500-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-weight: 600;
+      font-display: swap;
+      src: url(fonts/inter-latin-600-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'DM Mono';
+      font-weight: 400;
+      font-display: swap;
+      src: url(fonts/dm-mono-latin-400-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: 'DM Mono';
+      font-weight: 500;
+      font-display: swap;
+      src: url(fonts/dm-mono-latin-500-normal.woff2) format('woff2');
+    }
+    /* Layout: a floor plan under a desk lamp. The board is the hero; a thin job sheet runs above and below it. One committed night palette. */
+    :root {
+      --night: #0f1116; /* page */
+      --panel: #171a22; /* cards on the job sheet */
+      --floor: #806247; /* oak floorboards */
+      --floor2: #8a6b4e;
+      --grain: #5e4632; /* plank seams and grain */
+      --wall: #6e3a2e; /* brick wall tops */
+      --mortar: #2a1c18;
+      --wallside: #0d0908;
+      --text: #eef0f4;
+      --muted: #8b93a5;
+      --you: #f6f3ea; /* the thief */
+      --gem: #5ef0d6; /* the prize */
+      --guard: #ffb547; /* guards and their torches */
+      --laser: #ff4d5e;
+      --cam: #8fb3ff;
+      --display: 'Chakra Petch', 'Inter', system-ui, sans-serif;
+      --body: 'Inter', system-ui, -apple-system, sans-serif;
+      --mono: 'DM Mono', ui-monospace, Menlo, monospace;
+      color-scheme: dark;
+    }
+    html,
+    body {
+      height: 100%;
+    }
+    [hidden],
+    .app[hidden],
+    .section[hidden],
+    .tipcard[hidden],
+    .overlay[hidden] {
+      display: none;
+    }
+    body {
+      background: var(--night);
+      color: var(--text);
+      font-family: var(--body);
+      padding-left: max(16px, env(safe-area-inset-left, 0px));
+      padding-right: max(16px, env(safe-area-inset-right, 0px));
+      padding-block: 12px 24px;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .app {
+      max-width: 460px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .mark {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 1.4rem;
+      letter-spacing: 0.22em;
+      cursor: pointer;
+      background: none;
+      padding: 0;
+      border-radius: 4px;
+      color: var(--text);
+    }
+    .mark span {
+      color: var(--gem);
+    }
+    .night {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      font-family: var(--display);
+      font-weight: 700;
+    }
+    #b-lock {
+      white-space: nowrap;
+    }
+    .vname {
+      font-size: clamp(1.35rem, 7.4vw, 1.7rem);
+      line-height: 1.05;
+    }
+    .title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .vno {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .crowd {
+      min-height: 2.9em;
+    }
+    .crowd,
+    .sub {
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .crowd b,
+    .sub b {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .board {
+      /* the whole board fits on short phones, with the controls still in view */
+      width: 100%;
+      max-width: min(100%, calc((100dvh - 262px) * 7 / 9));
+      margin-inline: auto;
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow:
+        0 24px 60px -30px #000,
+        0 0 0 1px #ffffff10;
+    }
+    canvas.cv {
+      display: block;
+      width: 100%;
+      touch-action: none;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-align: center;
+      padding: 20px;
+      background: #0f1116c4;
+      backdrop-filter: blur(2px);
+      cursor: pointer;
+    }
+    /* small boards: the card tightens step by step instead of being cut off */
+    .overlay.tight {
+      gap: 6px;
+      padding: 12px;
+    }
+    .overlay.tight h2 {
+      font-size: 1.5rem;
+    }
+    .overlay.tight p {
+      font-size: 0.9rem;
+      line-height: 1.3;
+    }
+    .overlay.tight .rank,
+    .overlay.tight .streak {
+      font-size: 0.8rem;
+      line-height: 1.3;
+    }
+    .overlay.tight .share {
+      padding: 7px 12px;
+      font-size: 0.8rem;
+    }
+    .overlay.tight .small {
+      font-size: 0.72rem;
+    }
+    .overlay.tighter {
+      gap: 4px;
+      padding: 8px;
+    }
+    .overlay.tighter h2 {
+      font-size: 1.25rem;
+    }
+    .overlay.tighter p,
+    .overlay.tighter .rank,
+    .overlay.tighter .streak {
+      font-size: 0.74rem;
+    }
+    /* if it still can't fit, keep the top (what happened) and let the end run off */
+    .overlay.tighter.overflowing {
+      justify-content: flex-start;
+    }
+    .overlay h2 {
+      font-size: 2rem;
+      letter-spacing: 0.04em;
+    }
+    .overlay p {
+      margin: 0;
+      line-height: 1.45;
+      max-width: 30ch;
+    }
+    .overlay .small {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .caught h2 {
+      color: var(--laser);
+    }
+    .won h2 {
+      color: var(--gem);
+    }
+    .bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .meta {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .meta b {
+      color: var(--text);
+      font-weight: 500;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .legend span::before {
+      content: '';
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      margin-right: 6px;
+      vertical-align: -1px;
+      background: var(--c);
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      font: 600 1rem var(--body);
+      border-radius: 10px;
+      padding: 12px 18px;
+      border: 0;
+      cursor: pointer;
+      transition:
+        transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1),
+        background-color 0.2s ease,
+        box-shadow 0.2s ease,
+        filter 0.2s ease;
+      color: var(--text);
+    }
+    button:hover:not(:disabled) {
+      filter: brightness(1.12);
+    }
+    button:active:not(:disabled) {
+      transform: scale(0.95);
+    }
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--gem);
+      outline-offset: 3px;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    .primary {
+      background: var(--gem);
+      color: #04211c;
+    }
+    .ghost {
+      background: #ffffff10;
+    }
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0;
+    }
+    .hint b {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* home */
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .section h2 {
+      font-size: 0.8rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-weight: 500;
+    }
+    .card {
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: inset 0 0 0 1px #ffffff0c;
+    }
+    .jobs {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+    }
+    .jobs button {
+      padding: 10px 0;
+      font: 500 0.8rem var(--mono);
+      background: #ffffff0d;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .jobs button.done {
+      background: #5ef0d61f;
+      color: var(--gem);
+    }
+    .jobs button b {
+      font: 700 1.1rem var(--display);
+    }
+    /* "cracked" has to fit a sixth of a small phone */
+    .jobs button {
+      font-size: clamp(0.62rem, 2.5vw, 0.8rem);
+      min-width: 0;
+    }
+    header .tools {
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 12px;
+    }
+    #help {
+      padding: 8px 13px;
+      font-size: 0.9rem;
+    }
+    #snd {
+      padding: 8px 12px;
+      font-size: 0.8rem;
+    }
+    /* small phones: keep the header on one line so the board stays high */
+    @media (max-width: 370px) {
+      header .tools {
+        gap: 6px;
+      }
+      .mark {
+        font-size: 1.2rem;
+        letter-spacing: 0.16em;
+      }
+      #snd {
+        padding: 8px 9px;
+      }
+      /* Restart, Pebble and Wait share one row */
+      #v-play .bar .row {
+        flex-wrap: nowrap;
+        gap: 6px;
+      }
+      #v-play .bar .row button {
+        flex: 1;
+        padding-inline: 6px;
+        white-space: nowrap;
+      }
+    }
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .vrow {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2px 12px;
+      align-items: center;
+      text-align: left;
+      background: #ffffff0a;
+      padding: 12px 14px;
+      border-radius: 10px;
+    }
+    .vrow .n {
+      font: 700 1.05rem var(--display);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .vrow .s {
+      font: 400 0.75rem var(--mono);
+      color: var(--muted);
+      grid-column: 1;
+    }
+    .vrow .tag {
+      grid-row: 1 / span 2;
+      grid-column: 2;
+      font: 500 0.75rem var(--mono);
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: #ffffff10;
+      color: var(--muted);
+    }
+    .vrow .tag.ok {
+      background: #5ef0d61f;
+      color: var(--gem);
+    }
+    .vrow .tag.no {
+      background: #ff4d5e1f;
+      color: var(--laser);
+    }
+    .big {
+      font: 700 2.6rem var(--display);
+      line-height: 1;
+      color: var(--guard);
+      font-variant-numeric: tabular-nums;
+    }
+    .statrow {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .stat .v {
+      font: 500 1.3rem var(--mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat .l {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    /* builder */
+    .parts {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    /* four tools (a night with one kind of part) sit on one row */
+    .parts:has(> :nth-child(4):last-child) {
+      grid-template-columns: repeat(4, 1fr);
+    }
+    .parts button {
+      padding: 9px 6px;
+      font: 500 0.82rem var(--body);
+      background: #ffffff0d;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .parts button .c {
+      font: 400 0.72rem var(--mono);
+      color: var(--muted);
+    }
+    .parts button.on {
+      background: var(--text);
+      color: var(--night);
+    }
+    .parts button.on .c {
+      color: #0f111699;
+    }
+    .parts button i {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      display: inline-block;
+      background: var(--c);
+      margin-right: 5px;
+    }
+    .inspect {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-height: 2.4rem;
+    }
+    .chip {
+      min-height: 40px;
+      padding: 8px 14px;
+      font: 500 0.82rem var(--body);
+      border-radius: 999px;
+      background: #ffffff10;
+    }
+    .chip.on {
+      background: var(--text);
+      color: var(--night);
+    }
+    .verdict {
+      display: grid;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      line-height: 1.45;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #ffffff0a;
+    }
+    /* a four-step meter: straight walk, easy, a real puzzle, nasty */
+    .meter {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+    }
+    .meter i {
+      height: 6px;
+      border-radius: 3px;
+      background: #ffffff14;
+      transition:
+        background-color 0.3s ease,
+        box-shadow 0.3s ease;
+    }
+    .meter[data-level='1'] i:nth-child(-n + 1),
+    .meter[data-level='2'] i:nth-child(-n + 2),
+    .meter[data-level='3'] i:nth-child(-n + 3),
+    .meter[data-level='4'] i:nth-child(-n + 4) {
+      background: var(--gem);
+      box-shadow: 0 0 10px -2px var(--gem);
+    }
+    .meter[data-level='4'] i {
+      background: var(--guard);
+      box-shadow: 0 0 10px -2px var(--guard);
+    }
+    .meter[data-level='0'] i {
+      background: #ff4d5e55;
+    }
+    .vtext b {
+      font-weight: 500;
+    }
+    @keyframes nudge {
+      40% {
+        transform: scale(1.02);
+      }
+    }
+    .verdict.changed {
+      animation: nudge 0.35s ease;
+    }
+    .verdict.ok {
+      color: var(--gem);
+    }
+    .verdict.bad {
+      color: var(--laser);
+    }
+    label.name {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    input#vaultName {
+      font: 600 1.05rem var(--display);
+      color: var(--text);
+      background: #ffffff0d;
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 14px;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    .sheet {
+      position: fixed;
+      inset: 0;
+      background: #07080cdd;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: max(16px, env(safe-area-inset-top, 0px))
+        max(16px, env(safe-area-inset-right, 0px))
+        max(16px, env(safe-area-inset-bottom, 0px))
+        max(16px, env(safe-area-inset-left, 0px));
+      z-index: 20;
+    }
+    .sheet-card {
+      background: var(--panel);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 340px;
+      width: 100%;
+      box-shadow: 0 30px 80px -20px #000;
+    }
+    .sheet-card h2 {
+      font-size: 1.3rem;
+    }
+    .sheet-card img {
+      width: 100%;
+      border-radius: 8px;
+      image-rendering: auto;
+      background: var(--night);
+      min-height: 120px;
+    }
+    .coach {
+      min-height: 2.9em;
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: #5ef0d614;
+      color: var(--text);
+      font-size: 0.88rem;
+      line-height: 1.4;
+      box-shadow: inset 0 0 0 1px #5ef0d655;
+    }
+    .coach[hidden] {
+      display: none;
+    }
+    .ghostnote,
+    .ghostnote b {
+      color: var(--gem);
+    }
+    .sheet {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: max(16px, env(safe-area-inset-top, 0px))
+        max(16px, env(safe-area-inset-right, 0px))
+        max(16px, env(safe-area-inset-bottom, 0px))
+        max(16px, env(safe-area-inset-left, 0px));
+      background: #07080cd9;
+      backdrop-filter: blur(3px);
+    }
+    .sheet[hidden] {
+      display: none;
+    }
+    .sheet:not([hidden]) {
+      animation: fade 0.2s ease both;
+    }
+    .sheet-card {
+      width: 100%;
+      max-width: 420px;
+      max-height: 100%;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 18px;
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow:
+        inset 0 0 0 1px #ffffff12,
+        0 30px 80px -20px #000;
+      animation: enter 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+    .rules {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 12px;
+    }
+    .rules li {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 12px;
+      align-items: start;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+    .rules b {
+      color: var(--text);
+      font-weight: 600;
+    }
+    /* small marks drawn in CSS, one per rule */
+    .rules i {
+      width: 22px;
+      height: 22px;
+      margin-top: 1px;
+      border-radius: 50%;
+      display: block;
+    }
+    .r-you {
+      background: var(--you);
+      box-shadow: inset 0 -6px 0 -2px #0e1016;
+    }
+    .r-turn {
+      border: 2px dashed var(--guard);
+    }
+    .rules i.r-danger {
+      border-radius: 4px;
+      border: 2px solid var(--laser);
+      background: repeating-linear-gradient(
+        45deg,
+        #ff4d5e33 0 3px,
+        transparent 3px 7px
+      );
+    }
+    .r-guard {
+      background: radial-gradient(
+        circle at 60% 50%,
+        #1f2740 0 35%,
+        var(--guard) 36%
+      );
+    }
+    .rules i.r-laser {
+      border-radius: 3px;
+      height: 6px;
+      margin-top: 9px;
+      background: var(--laser);
+      box-shadow: 0 0 10px var(--laser);
+    }
+    .r-cam {
+      background: radial-gradient(circle, var(--cam) 0 30%, #2b3350 31%);
+    }
+    .rules i.r-pebble {
+      width: 12px;
+      height: 12px;
+      margin: 5px;
+      background: var(--you);
+    }
+    .rules i.r-build {
+      border-radius: 4px;
+      background: linear-gradient(var(--wall) 0 70%, var(--wallside) 70%);
+    }
+    .theme {
+      color: var(--guard);
+    }
+    .vrow.thumbed {
+      grid-template-columns: auto 1fr auto;
+    }
+    .vrow.thumbed .thumb {
+      grid-row: 1 / span 2;
+      grid-column: 1;
+    }
+    .vrow.thumbed .n,
+    .vrow.thumbed .s {
+      grid-column: 2;
+    }
+    .vrow.thumbed .tag {
+      grid-column: 3;
+    }
+    .thumb {
+      display: block;
+      border-radius: 5px;
+      box-shadow: 0 0 0 1px #ffffff14;
+    }
+    .jobs .thumb {
+      margin-bottom: 4px;
+      opacity: 0.85;
+    }
+    .jobs button.done .thumb {
+      opacity: 1;
+    }
+    .votn .thumbrow {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+    .vrow-wrap {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .mod-remove {
+      font-size: 0.8rem;
+      padding: 6px 10px;
+      color: var(--laser);
+    }
+    .votn {
+      box-shadow:
+        inset 0 0 0 1px #ffb54766,
+        0 18px 40px -24px #ffb54755;
+    }
+    .votn .n {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 1.35rem;
+    }
+    .tipcard {
+      font-size: 0.88rem;
+      line-height: 1.45;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #5ef0d614;
+      box-shadow: inset 0 0 0 1px #5ef0d655;
+    }
+    .tipcard strong {
+      color: var(--gem);
+    }
+    .overlay .rank,
+    .overlay .streak {
+      max-width: 30ch;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+    .overlay .streak {
+      color: var(--guard);
+      font-weight: 600;
+    }
+    .overlay .extras {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #pebble[hidden],
+    .legend[hidden] {
+      display: none;
+    }
+    /* the web preview's own toast (inside Reddit, Reddit shows toasts) */
+    #ptoast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translate(-50%, 12px);
+      max-width: min(90vw, 420px);
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: #1c2030;
+      color: var(--text);
+      box-shadow: 0 10px 30px #0008;
+      font-size: 0.9rem;
+      opacity: 0;
+      pointer-events: none;
+      transition:
+        opacity 0.2s,
+        transform 0.2s;
+      z-index: 50;
+    }
+    #ptoast.on {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+    .overlay .extras:empty {
+      display: none;
+    }
+    .streakline {
+      margin-top: 4px;
+      color: var(--guard);
+    }
+    .overlay .share {
+      pointer-events: auto;
+      font-size: 0.9rem;
+      padding: 10px 16px;
+    }
+    /* motion: screens slide in, cards arrive one after another, results land like a stamp */
+    @keyframes enter {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+    }
+    @keyframes fade {
+      from {
+        opacity: 0;
+      }
+    }
+    @keyframes stamp {
+      0% {
+        opacity: 0;
+        transform: scale(1.9) rotate(-9deg);
+        letter-spacing: 0.32em;
+      }
+      55% {
+        opacity: 1;
+        transform: scale(0.94) rotate(-1deg);
+      }
+      100% {
+        transform: scale(1) rotate(-2deg);
+        letter-spacing: 0.04em;
+      }
+    }
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+    }
+    @keyframes drop {
+      from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.98);
+      }
+    }
+    main.app:not([hidden]) {
+      animation: enter 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+    #v-home > .section {
+      animation: enter 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+    #v-home > .section:nth-child(2) {
+      animation-delay: 0.06s;
+    }
+    #v-home > .section:nth-child(3) {
+      animation-delay: 0.12s;
+    }
+    #v-home > .section:nth-child(4) {
+      animation-delay: 0.18s;
+    }
+    .overlay:not([hidden]) {
+      animation: fade 0.25s ease both;
+    }
+    .overlay h2 {
+      animation: stamp 0.55s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+      text-shadow: 0 4px 24px currentColor;
+    }
+    .overlay p {
+      animation: rise 0.4s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+    .overlay .small {
+      animation: rise 0.4s 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+    .overlay .share {
+      animation: rise 0.45s 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      box-shadow: 0 10px 30px -10px #5ef0d680;
+    }
+    .coach:not([hidden]) {
+      animation: drop 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+    .jobs button.done {
+      box-shadow:
+        0 0 0 1px #5ef0d655,
+        0 6px 18px -10px #5ef0d6;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      button {
+        transition: none;
+      }
+      main.app:not([hidden]),
+      #v-home > .section,
+      .overlay:not([hidden]),
+      .overlay h2,
+      .overlay p,
+      .overlay .small,
+      .overlay .share,
+      .coach:not([hidden]) {
+        animation: none;
+      }
+    }
+    /* wide screens (Reddit's expanded view on a computer): the board on the left, everything else beside it */
+    @media (min-width: 860px),
+      (orientation: landscape) and (min-width: 600px) and (max-height: 560px) {
+      body > .app {
+        max-width: 980px;
+      }
+      #v-home {
+        width: 100%;
+        max-width: 560px;
+        margin-inline: auto;
+      }
+      /* on the home screen the header lines up with the single column */
+      body > .app:has(> #v-home:not([hidden])) {
+        max-width: 560px;
+      }
+      #v-play,
+      #v-build {
+        max-width: none;
+        width: 100%;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        column-gap: 28px;
+        row-gap: 12px;
+        align-content: start;
+      }
+      #v-play[hidden],
+      #v-build[hidden] {
+        display: none;
+      }
+      #v-play > .board,
+      #v-build > .board {
+        grid-column: 1;
+        grid-row: 1 / span 12;
+        max-width: min(100%, calc((100dvh - 120px) * 7 / 9));
+        margin: 0 auto;
+        align-self: start;
+      }
+      #v-play > :not(.board),
+      #v-build > :not(.board) {
+        grid-column: 2;
+      }
+    }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <button
+          class="mark"
+          id="home-link"
+          type="button"
+          aria-label="Back to the home screen"
+        >
+          VAU<span>L</span>T
+        </button>
+        <div class="row tools">
+          <div class="night" id="night"></div>
+          <button
+            class="ghost"
+            id="help"
+            type="button"
+            aria-label="How to play"
+          >
+            ?
+          </button>
+          <button class="ghost" id="snd" type="button">Sound on</button>
+        </div>
+      </header>
+
+      <!-- HOME -->
+      <main id="v-home" class="app" style="gap:16px">
+        <section class="section" id="votn-section" hidden>
+          <h2>Vault of the night</h2>
+          <div class="card votn" id="votn"></div>
+        </section>
+        <section class="section">
+          <h2>Training heist</h2>
+          <div class="card">
+            <div class="sub" id="job-line"></div>
+            <div class="jobs" id="jobs"></div>
+          </div>
+        </section>
+        <section class="section">
+          <h2>Your vault</h2>
+          <div class="card" id="mine"></div>
+        </section>
+        <section class="section">
+          <h2>Tonight’s vaults</h2>
+          <div class="sub" id="others-line"></div>
+          <div class="list" id="others"></div>
+        </section>
+      </main>
+
+      <!-- PLAY -->
+      <main id="v-play" class="app" hidden>
+        <div class="title">
+          <div class="vname" id="vname"></div>
+          <div class="vno" id="vno"></div>
+        </div>
+        <div class="crowd" id="crowd"></div>
+        <div class="coach" id="coach" role="status" hidden></div>
+        <div class="board">
+          <canvas
+            class="cv"
+            id="board"
+            role="img"
+            aria-label="Vault floor plan. Swipe or use the arrow keys to move one tile. Tap yourself or press space to wait."
+          ></canvas>
+          <div class="overlay" id="overlay" aria-live="assertive" hidden></div>
+        </div>
+        <div class="bar">
+          <div class="meta" id="meta"></div>
+          <div class="row">
+            <button class="ghost" id="restart" type="button">Restart</button
+            ><button class="ghost" id="pebble" type="button">Pebble</button
+            ><button class="ghost" id="wait" type="button">Wait</button>
+          </div>
+        </div>
+        <div class="legend" id="legend"></div>
+        <p class="hint" id="hint"></p>
+      </main>
+
+      <!-- BUILD -->
+      <main id="v-build" class="app" hidden>
+        <div class="title">
+          <div class="vname">Build your vault</div>
+          <div class="vno" id="b-night"></div>
+        </div>
+        <div class="tipcard" id="b-tip" hidden></div>
+        <div class="parts" id="parts"></div>
+        <div class="board">
+          <canvas
+            class="cv"
+            id="bboard"
+            role="img"
+            aria-label="Vault builder. Tap a tile to place the selected part."
+          ></canvas>
+        </div>
+        <div class="inspect" id="inspect"></div>
+        <div class="verdict" id="verdict" role="status"></div>
+        <label class="name"
+          >Vault name<input
+            id="vaultName"
+            maxlength="24"
+            autocomplete="off"
+          ></label
+        >
+        <div class="row">
+          <button class="ghost" id="b-test" type="button">Test run</button>
+          <button class="ghost" id="b-surprise" type="button">
+            Surprise me
+          </button>
+          <button class="ghost" id="b-undo" type="button" disabled>Undo</button>
+          <button class="ghost" id="b-clear" type="button">Clear</button>
+          <button class="primary" id="b-lock" type="button" style="flex:1">
+            Lock it in
+          </button>
+        </div>
+        <p class="hint" id="lock-note">
+          Locking in publishes your vault for everyone tonight. You can’t change
+          it after that.
+        </p>
+      </main>
+
+      <div class="sheet" id="howto" hidden>
+        <div
+          class="sheet-card"
+          role="dialog"
+          aria-label="How to play"
+          aria-modal="true"
+        >
+          <h2>How to play</h2>
+          <ul class="rules">
+            <li>
+              <i class="r-you"></i
+              ><span
+                ><b>Reach the gem.</b>
+                Swipe, or tap a tile next to you, to move one step. Tap yourself
+                to wait.</span
+              >
+            </li>
+            <li>
+              <i class="r-turn"></i
+              ><span
+                ><b>Everything moves after you.</b>
+                Guards walk, lasers switch, cameras turn. Take your time:
+                nothing moves until you do.</span
+              >
+            </li>
+            <li>
+              <i class="r-danger"></i
+              ><span
+                ><b>Red corners</b>
+                mark the tiles that will be watched after your next move. Stay
+                off them.</span
+              >
+            </li>
+            <li>
+              <i class="r-guard"></i
+              ><span
+                ><b>Guards</b>
+                look where their cap points. Walk into one from behind or the
+                side to knock them out; from the front, you’re caught.</span
+              >
+            </li>
+            <li>
+              <i class="r-laser"></i
+              ><span
+                ><b>Lasers</b>
+                switch on and off. A flickering dashed beam fires next
+                turn.</span
+              >
+            </li>
+            <li>
+              <i class="r-cam"></i
+              ><span
+                ><b>Cameras</b>
+                turn every move. Slip past when they look away.</span
+              >
+            </li>
+            <li>
+              <i class="r-pebble"></i
+              ><span
+                ><b>One pebble.</b>
+                Throw it and every guard within 3 tiles turns to the noise for
+                two turns.</span
+              >
+            </li>
+            <li>
+              <i class="r-build"></i
+              ><span
+                ><b>Build your own.</b>
+                Everyone gets the same parts each night. Your vault must be
+                crackable; then see how many thieves it catches.</span
+              >
+            </li>
+          </ul>
+          <div class="row">
+            <button
+              class="primary"
+              id="howto-close"
+              type="button"
+              style="flex:1"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="game.js"></script>
+  </body>
+</html>

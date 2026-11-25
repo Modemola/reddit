@@ -1,0 +1,392 @@
+<title>Skip</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;800&family=Inter:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the lake fills a tall card; numbers sit on the water like a scoreboard on a dock. One committed dusk palette. */
+:root {
+  --night: #10142a;      /* page and upper sky */
+  --dusk: #2a2c52;       /* sky middle */
+  --glow: #e59a72;       /* last light on the horizon */
+  --shore: #0a0e1d;      /* treeline */
+  --deep: #0b1526;       /* near water */
+  --foam: #f4e9d8;       /* ripples and text */
+  --muted: #9aa0be;
+  --you: #ffd27a;        /* your stone */
+  --crowd: #9cc3ff;      /* everyone's skips */
+  --display: "Syne", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, -apple-system, sans-serif;
+  --mono: "DM Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--night); color: var(--foam); font-family: var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 20px;
+  -webkit-tap-highlight-color: transparent;
+}
+.app { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.mark { font-family: var(--display); font-weight: 800; font-size: 1.35rem; letter-spacing: 0.06em; }
+.mark span { color: var(--you); }
+.edition { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); text-align: right; }
+.lake { position: relative; border-radius: 16px; overflow: hidden; aspect-ratio: 3 / 4; max-width: 100%; box-shadow: 0 20px 50px -24px #000; }
+canvas#lake { display: block; width: 100%; height: 100%; touch-action: none; }
+.hud { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 14px 16px; }
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.cond { font-family: var(--mono); font-size: 0.72rem; line-height: 1.5; color: var(--foam); opacity: 0.85; }
+.throws { display: flex; gap: 6px; }
+.throws i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--foam); opacity: 0.8; }
+.throws i.used { background: var(--you); border-color: var(--you); }
+.count { position: absolute; left: 0; right: 0; top: 13%; text-align: center; }
+.count .n { font-family: var(--display); font-weight: 800; font-size: 5.5rem; line-height: 1.05; color: var(--foam); text-shadow: 0 2px 24px #0008; font-variant-numeric: tabular-nums; }
+.count .l { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--foam); opacity: 0.8; }
+.coach { position: absolute; left: 16px; right: 16px; top: 44%; text-align: center; font-size: 0.95rem; line-height: 1.4; text-shadow: 0 1px 8px #000a; min-height: 2.8em; }
+.coach b { color: var(--you); font-weight: 600; }
+.panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat { border-top: 1px solid #ffffff22; padding-top: 8px; min-width: 0; }
+.stat .v { font-family: var(--mono); font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.stat .l { font-size: 0.75rem; color: var(--muted); }
+.line { color: var(--muted); font-size: 0.92rem; line-height: 1.5; }
+.line b { color: var(--foam); font-weight: 600; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+button { font: 600 1rem var(--body); border-radius: 999px; padding: 13px 20px; border: 0; cursor: pointer; transition: transform .12s ease; }
+button:active { transform: scale(0.97); }
+button:focus-visible { outline: 2px solid var(--you); outline-offset: 3px; }
+.primary { background: var(--you); color: #22170a; flex: 1 1 auto; }
+.ghost { background: transparent; color: var(--foam); box-shadow: inset 0 0 0 1.5px #ffffff30; }
+.note { font-size: 0.8rem; color: var(--muted); line-height: 1.45; }
+.toast { font-family: var(--mono); font-size: 0.8rem; color: var(--you); min-height: 1.2em; }
+@media (prefers-reduced-motion: reduce) { button { transition: none; } }
+</style>
+
+<div class="app">
+  <header>
+    <div class="mark">SK<span>I</span>P</div>
+    <div class="edition" id="edition"></div>
+  </header>
+  <div class="lake">
+    <canvas id="lake" aria-label="The lake. Press and hold near the bottom, then flick up to throw."></canvas>
+    <div class="hud">
+      <div class="top"><div class="cond" id="cond"></div><div class="throws" id="throws"></div></div>
+      <div class="count" id="count" hidden><div class="n" id="n">0</div><div class="l">skips</div></div>
+      <div class="coach" id="coach"></div>
+    </div>
+  </div>
+  <section class="panel">
+    <div class="stat"><div class="v" id="st-best">–</div><div class="l">your best today</div></div>
+    <div class="stat"><div class="v" id="st-rank">–</div><div class="l">you beat</div></div>
+    <div class="stat"><div class="v" id="st-rec">–</div><div class="l">lake record</div></div>
+  </section>
+  <p class="line" id="line"></p>
+  <div class="actions" id="actions"></div>
+  <div class="toast" id="toast" role="status"></div>
+  <p class="note">Every skip anyone makes today stays on the lake as a faint ring. Throws are shared with everyone who opens this page.</p>
+</div>
+
+<script>
+// SKIP physics. Pure and deterministic: the same throw on the same lake gives the same result.
+// Units: metres, seconds. x = sideways, z = distance out, y = height.
+const G = 9.81, SWEET = 20; // best angle of attack is about 20 degrees (Clanet et al., Nature 2004)
+
+function hash(n) { n = Math.sin(n * 127.1 + 311.7) * 43758.5453; return n - Math.floor(n); }
+function makeLake(day) {
+  const r = i => hash(day * 13.37 + i);
+  return {
+    day,
+    wind: { head: (r(1) - 0.5) * 3.2, cross: (r(2) - 0.5) * 1.6 }, // m/s^2-ish nudges
+    chop: 0.15 + r(3) * 0.75,                                      // 0 calm .. 1 rough
+    length: 62,
+  };
+}
+// deterministic surface roughness at a point
+const chopAt = (lake, x, z) => (hash(Math.floor(z * 3) * 7.1 + Math.floor(x * 3) * 3.3 + lake.day) - 0.5) * 2;
+
+// throw: { power 0..1, aim radians, tilt degrees }
+function simulate(lake, th) {
+  const v0 = 5 + 17 * th.power;
+  let x = 0, y = 0.9, z = 1.2, vx = Math.sin(th.aim) * v0, vz = Math.cos(th.aim) * v0, vy = 0.4;
+  let tilt = th.tilt + Math.max(0, th.power - 0.8) * 50; // a very hard throw lifts the leading edge
+  const spin = 0.4 + 0.6 * th.power;                      // spin keeps the stone steady
+  const path = [], skips = [], dt = 1 / 240;
+  let t = 0, end = 'sink';
+  path.push([t, x, y, z]);
+  for (let step = 0; step < 240 * 30; step++) {
+    vz += lake.wind.head * dt * 0.5; vx += lake.wind.cross * dt * 0.4; vy -= G * dt;
+    x += vx * dt; y += vy * dt; z += vz * dt; t += dt;
+    if (step % 4 === 0) path.push([t, x, y, z]);
+    if (z >= lake.length) { end = 'shore'; path.push([t, x, Math.max(y, 0), z]); break; }
+    if (y > 0) continue;
+    // contact with the water
+    const speed = Math.hypot(vx, vz), inc = Math.atan2(-vy, speed) * 180 / Math.PI;
+    const good = Math.exp(-(((tilt - SWEET) / 7) ** 2));
+    if (speed < 2 || inc > 10 + 16 * good || tilt < 4 || tilt > 45) { y = 0; path.push([t, x, 0, z]); end = 'sink'; break; }
+    skips.push([x, z, t, good]);
+    const keep = 0.83 + 0.1 * good;
+    vx *= keep; vz *= keep;
+    vy = 0.045 * speed * keep * (0.3 + good) + 0.2 * -vy * good;
+    y = 0;
+    tilt += chopAt(lake, x, z) * lake.chop * 4 * (1.15 - spin);
+    path.push([t, x, 0, z]);
+    if (vy < 0.3) { end = 'sink'; break; }
+  }
+  const dist = Math.hypot(x, z - 1.2);
+  return { skips, path, end, dist, n: skips.length };
+}
+if (typeof module !== 'undefined') module.exports = { makeLake, simulate };
+
+const EPOCH = Date.UTC(2026, 10, 19);
+const dayNo = Math.max(0, Math.floor((Date.now() - EPOCH) / 864e5));
+const LAKE = makeLake(dayNo), THROWS = 3;
+const $ = id => document.getElementById(id);
+
+// ---------- scene ----------
+const cv = $('lake'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1, F = 0, HZ = 0;
+const CAM = { h: 1.7, back: 0.8, z: 0 };
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = Object.fromEntries(['night', 'dusk', 'glow', 'shore', 'deep', 'foam', 'you', 'crowd'].map(k => [k, css('--' + k)]));
+function resize() { DPR = Math.min(devicePixelRatio || 1, 2.5); W = cv.clientWidth; H = cv.clientHeight; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); F = W * 0.95; HZ = H * 0.36; buildBackdrop(); }
+const proj = (x, y, z) => { const zc = z - CAM.z + CAM.back; return [W / 2 + x / zc * F, HZ + (CAM.h - y) / zc * F, zc]; };
+
+let backdrop = null;
+function buildBackdrop() {
+  backdrop = document.createElement('canvas'); backdrop.width = cv.width; backdrop.height = cv.height;
+  const b = backdrop.getContext('2d'); b.scale(DPR, DPR);
+  const sky = b.createLinearGradient(0, 0, 0, HZ); sky.addColorStop(0, C.night); sky.addColorStop(0.55, C.dusk); sky.addColorStop(1, C.glow);
+  b.fillStyle = sky; b.fillRect(0, 0, W, HZ + 1);
+  const wat = b.createLinearGradient(0, HZ, 0, H); wat.addColorStop(0, C.glow); wat.addColorStop(0.04, C.dusk); wat.addColorStop(0.45, '#13203a'); wat.addColorStop(1, C.deep);
+  b.fillStyle = wat; b.fillRect(0, HZ, W, H - HZ);
+  // treeline on the far shore, unique to the day
+  b.fillStyle = C.shore; b.beginPath(); b.moveTo(0, HZ + 1);
+  for (let x = 0; x <= W; x += 3) { const n = Math.sin(x * 0.045 + dayNo) * 4 + Math.sin(x * 0.13 + dayNo * 3) * 2.5 + Math.sin(x * 0.011 + dayNo * 7) * 7; b.lineTo(x, HZ - 9 - Math.max(0, n)); }
+  b.lineTo(W, HZ + 1); b.closePath(); b.fill();
+  // stars
+  b.fillStyle = C.foam;
+  for (let i = 0; i < 40; i++) { const sx = (Math.sin(i * 91.7) * 0.5 + 0.5) * W, sy = (Math.sin(i * 47.3) * 0.5 + 0.5) * HZ * 0.55; b.globalAlpha = 0.25 + 0.4 * (Math.sin(i * 13.1) * 0.5 + 0.5); b.fillRect(sx, sy, 1.2, 1.2); }
+  b.globalAlpha = 1;
+}
+
+const ripples = []; // {x,z,t0,color,life,max}
+let crowdRings = [];  // [x,z] from everyone else today
+let flight = null, hold = null, practice = false;
+function ring(x, z, r, color, alpha, width) {
+  if (z - CAM.z < 0.2) return;
+  const [sx, sy, zc] = proj(x, 0, z), rx = r / zc * F, ry = Math.max(0.6, rx * CAM.h / zc);
+  if (sy < HZ) return;
+  ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+}
+function frame(now) {
+  if (!W) { requestAnimationFrame(frame); return; }
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.drawImage(backdrop, 0, 0, W, H);
+  // the camera follows the stone, then drifts back to show the whole trail
+  const camTarget = flight && !flight.ended ? Math.max(0, (flight.z || 0) - 7) : 0;
+  CAM.z += (camTarget - CAM.z) * (flight && !flight.ended ? 0.08 : 0.025);
+  // shimmer
+  ctx.strokeStyle = C.foam;
+  for (let i = 0; i < 70; i++) {
+    const z = CAM.z + 2 + ((i * 7.31 + now / 9000 * (1 + (i % 3))) % 1) * 60, x = Math.sin(i * 12.9) * z * 0.6;
+    const [sx, sy, zc] = proj(x, 0, z); const len = 18 / zc * F * 0.06;
+    ctx.globalAlpha = 0.05 + 0.08 * (Math.sin(now / 700 + i) * 0.5 + 0.5); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(sx - len, sy); ctx.lineTo(sx + len, sy); ctx.stroke();
+  }
+  // the lake remembers: everyone's skips today
+  const pulse = 0.5 + 0.5 * Math.sin(now / 1800);
+  for (let i = 0; i < crowdRings.length; i++) { const [x, z] = crowdRings[i]; ring(x, z, 0.32 + 0.06 * pulse, C.crowd, 0.16 + 0.06 * pulse, 1); }
+  // live ripples
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i], age = (now - r.t0) / 1000; if (age < 0) continue;
+    if (age > r.life) { ripples.splice(i, 1); continue; }
+    const k = age / r.life;
+    ring(r.x, r.z, 0.12 + r.max * k, r.color, (1 - k) * 0.9, 1.6);
+    if (age < r.life * 0.5) ring(r.x, r.z, 0.06 + r.max * 0.55 * k, r.color, (1 - k * 2) * 0.6, 1);
+  }
+  ctx.globalAlpha = 1;
+  if (flight) drawFlight(now);
+  if (hold) drawHold(now);
+  requestAnimationFrame(frame);
+}
+function drawStone(x, y, z, tilt, color) {
+  const [sx, sy, zc] = proj(x, y, z), [hx, hy] = proj(x, 0, z), s = Math.max(2.2, 0.075 / zc * F);
+  ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(hx, hy, s, s * 0.3, 0, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(sx, sy, s, s * 0.45, -tilt * Math.PI / 180 * 0.6, 0, 7); ctx.fill();
+}
+function drawFlight(now) {
+  const f = flight, t = (now - f.t0) / 1000, p = f.res.path;
+  let i = 0; while (i < p.length - 1 && p[i + 1][0] < t) i++;
+  const a = p[i], b = p[Math.min(i + 1, p.length - 1)], k = b[0] > a[0] ? Math.min(1, (t - a[0]) / (b[0] - a[0])) : 1;
+  const x = a[1] + (b[1] - a[1]) * k, y = a[2] + (b[2] - a[2]) * k, z = a[3] + (b[3] - a[3]) * k;
+  while (f.next < f.res.skips.length && f.res.skips[f.next][2] <= t) {
+    const s = f.res.skips[f.next++]; ripples.push({ x: s[0], z: s[1], t0: now, color: practice ? C.foam : C.you, life: 2.6, max: 1.1 });
+    $('n').textContent = f.next; sound.plink(f.next, s[3]);
+  }
+  f.z = z;
+  const done = t >= p[p.length - 1][0];
+  if (!done) drawStone(x, y, z, f.th.tilt, practice ? C.foam : C.you);
+  else if (!f.ended) { f.ended = true; ripples.push({ x, z, t0: now, color: C.foam, life: 1.6, max: 0.5 }); sound.plunk(); setTimeout(() => landed(f), 650); }
+}
+
+// ---------- the throw ----------
+// Press and hold: the stone rocks in your fingers (angle of attack). Flick up to throw.
+const TILT_PERIOD = 1.5;
+const tiltAt = ms => 20 - 20 * Math.cos(2 * Math.PI * (ms / 1000) / TILT_PERIOD);
+function drawHold(now) {
+  const tilt = tiltAt(now - hold.t0);
+  // the stone in hand
+  const cx = W / 2, cy = H - 70;
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(-tilt * Math.PI / 180);
+  ctx.fillStyle = C.you; ctx.beginPath(); ctx.ellipse(0, 0, 26, 8, 0, 0, 7); ctx.fill();
+  ctx.restore();
+  // angle gauge: 0 to 40 degrees with the sweet band
+  const gx = 46, gy = H - 40, R = 34; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.globalAlpha = 0.35; ctx.strokeStyle = C.foam; ctx.beginPath(); ctx.arc(gx, gy, R, -Math.PI / 2 * (40 / 90) * 2 - 0.0, 0, false); ctx.stroke();
+  const ang = d => -d / 90 * Math.PI / 2 * 2;
+  ctx.globalAlpha = 0.95; ctx.strokeStyle = '#7fe0a8'; ctx.beginPath(); ctx.arc(gx, gy, R, ang(23), ang(17), false); ctx.stroke();
+  ctx.strokeStyle = C.you; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + Math.cos(ang(tilt)) * (R + 6), gy + Math.sin(ang(tilt)) * (R + 6)); ctx.stroke();
+  ctx.globalAlpha = 1; ctx.fillStyle = C.foam; ctx.font = '500 11px ' + css('--mono'); ctx.fillText(Math.round(tilt) + '°', gx + R + 10, gy - 4);
+}
+const samples = [];
+cv.addEventListener('pointerdown', e => {
+  if (flight || state.phase !== 'ready') return;
+  cv.setPointerCapture(e.pointerId); sound.wake();
+  hold = { t0: performance.now() }; samples.length = 0; samples.push([e.clientX, e.clientY, performance.now()]);
+  coach('Watch the angle. <b>Flick up</b> when it is in the green.');
+});
+cv.addEventListener('pointermove', e => { if (hold) { samples.push([e.clientX, e.clientY, performance.now()]); if (samples.length > 30) samples.shift(); } });
+const release = e => {
+  if (!hold) return;
+  const now = performance.now(), tilt = tiltAt(now - hold.t0); hold = null;
+  samples.push([e.clientX, e.clientY, now]);
+  const recent = samples.filter(s => now - s[2] < 110), a = recent[0], b = recent[recent.length - 1];
+  const dt = Math.max(16, b[2] - a[2]), vx = (b[0] - a[0]) / dt, vy = (b[1] - a[1]) / dt;
+  if (vy > -0.35) { coach('Hold, then <b>flick up</b> fast to throw.'); return; }
+  const speed = Math.hypot(vx, vy);
+  const th = { power: Math.max(0, Math.min(1, (speed - 0.35) / 2.3)), aim: Math.max(-0.22, Math.min(0.22, Math.atan2(vx, -vy) * 0.6)), tilt };
+  throwStone(th);
+};
+cv.addEventListener('pointerup', release); cv.addEventListener('pointercancel', () => { hold = null; });
+
+function throwStone(th) {
+  const res = simulate(LAKE, th);
+  flight = { th, res, t0: performance.now(), next: 0, ended: false };
+  $('count').hidden = false; $('n').textContent = '0'; coach('');
+}
+function feedback(th, res) {
+  const eff = th.tilt + Math.max(0, th.power - 0.8) * 50;
+  const parts = [];
+  if (eff > 26) parts.push(th.power > 0.8 && th.tilt <= 23 ? 'A throw that hard lifts the front edge. Try a flatter angle.' : `Too steep (${Math.round(th.tilt)}°). It dug in.`);
+  else if (eff < 14) parts.push(`Too flat (${Math.round(th.tilt)}°). It sliced into the water.`);
+  else parts.push(`Good angle (${Math.round(th.tilt)}°).`);
+  if (th.power < 0.45) parts.push('Flick faster for more distance.');
+  return parts.join(' ');
+}
+
+// ---------- day state ----------
+const state = { phase: 'ready', mine: [], practiceBest: 0 };
+function landed(f) {
+  const { res, th } = f;
+  flight = null; $('count').hidden = true;
+  const msg = `<b>${res.n} ${res.n === 1 ? 'skip' : 'skips'}</b> · ${res.dist.toFixed(0)} m${res.end === 'shore' ? ' · reached the far shore!' : ''}<br>${feedback(th, res)}`;
+  if (practice) { state.practiceBest = Math.max(state.practiceBest, res.n); coach(msg); render(); return; }
+  const rec = { n: res.n, d: Math.round(res.dist * 10), s: res.skips.flatMap(s => [Math.round(s[0] * 10), Math.round(s[1] * 10)]) };
+  state.mine.push(rec); save();
+  coach(msg + (state.mine.length < THROWS ? '' : ''));
+  render();
+}
+
+// ---------- crowd store ----------
+let db = null, me = null, myDoc = null, players = [], crowdStatus = 'loading';
+const key = 'd' + dayNo;
+async function connect() {
+  try {
+    if (!window.claude?.use) { crowdStatus = 'off'; render(); return; }
+    const [d, u] = await Promise.all([claude.use('db'), claude.use('user')]);
+    if (!d || !u) { crowdStatus = 'off'; render(); return; }
+    db = d; me = await u.id();
+    const timer = setTimeout(() => { if (crowdStatus === 'loading') { crowdStatus = 'slow'; render(); } }, 10000);
+    db.collection('players').onSnapshot(snap => {
+      players = snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() }));
+      myDoc = players.find(p => p.id === me) || null;
+      if (!snap.metadata.fromCache) { clearTimeout(timer); crowdStatus = 'live'; }
+      const saved = myDoc?.days?.[key]?.throws;
+      if (saved && saved.length > state.mine.length) state.mine = saved.slice();
+      crowdRings = players.filter(p => p.id !== me).flatMap(p => (p.days?.[key]?.throws || []).flatMap(t => { const o = []; for (let i = 0; i + 1 < t.s.length; i += 2) o.push([t.s[i] / 10, t.s[i + 1] / 10]); return o; })).slice(0, 2500);
+      render();
+    }, () => { clearTimeout(timer); crowdStatus = 'off'; render(); });
+  } catch { crowdStatus = 'off'; render(); }
+}
+function loadLocal() { try { const v = JSON.parse(localStorage.getItem('skip:' + key) || '[]'); if (Array.isArray(v)) state.mine = v; } catch {} }
+async function save() {
+  try { localStorage.setItem('skip:' + key, JSON.stringify(state.mine)); } catch {}
+  if (!db || !me) return;
+  try { await db.collection('players').doc(me).set({ days: { ...(myDoc?.days || {}), [key]: { throws: state.mine } } }); }
+  catch { toast('Your throw could not be added to the lake. Check your connection and reopen the page.'); }
+}
+
+// ---------- ui ----------
+function coach(h) { $('coach').innerHTML = h; }
+function toast(t) { $('toast').textContent = t; clearTimeout(toast.t); toast.t = setTimeout(() => $('toast').textContent = '', 4500); }
+function conditions() {
+  const h = LAKE.wind.head, c = LAKE.chop;
+  const wind = Math.abs(h) < 0.4 ? 'Still air' : (h > 0 ? 'Tailwind' : 'Headwind') + (Math.abs(h) > 1.1 ? ', strong' : ', light');
+  const water = c < 0.35 ? 'glassy water' : c < 0.65 ? 'light ripple' : 'choppy water';
+  return `${wind}<br>${water}`;
+}
+function render() {
+  $('edition').textContent = 'Lake No. ' + (dayNo + 1) + ' · ' + new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  $('cond').innerHTML = practice ? 'Practice<br>not saved' : conditions();
+  $('throws').innerHTML = Array.from({ length: THROWS }, (_, i) => `<i class="${i < state.mine.length ? 'used' : ''}"></i>`).join('');
+  const best = state.mine.reduce((m, t) => Math.max(m, t.n), 0);
+  const others = players.filter(p => p.id !== me).map(p => (p.days?.[key]?.throws || []).reduce((m, t) => Math.max(m, t.n), -1)).filter(n => n >= 0);
+  const done = state.mine.length >= THROWS;
+  $('st-best').textContent = state.mine.length ? best : '–';
+  $('st-rank').textContent = state.mine.length && others.length ? Math.round(100 * others.filter(n => n < best).length / others.length) + '%' : '–';
+  const rec = Math.max(best, ...others, 0); $('st-rec').textContent = rec || '–';
+  let line;
+  if (crowdStatus === 'off') line = 'Other players’ skips are not available in this view. Open the page signed in to see the whole lake.';
+  else if (crowdStatus !== 'live') line = crowdStatus === 'slow' ? 'The lake is taking a while to load. Other players’ skips will appear when it arrives.' : 'Loading today’s lake…';
+  else if (!others.length) line = '<b>You are the first on the lake today.</b> Your skips will stay here for everyone who comes after.';
+  else line = `<b>${others.length} ${others.length === 1 ? 'person has' : 'people have'} thrown here today.</b> Every faint ring on the water is one of their skips.`;
+  $('line').innerHTML = line;
+  state.phase = flight ? 'flying' : (!practice && done ? 'done' : 'ready');
+  const A = $('actions'); A.innerHTML = '';
+  const btn = (l, c, fn) => { const b = document.createElement('button'); b.textContent = l; b.className = c; b.onclick = fn; A.appendChild(b); };
+  if (state.mine.length) btn('Copy result', 'primary', copy);
+  if (done && !practice) btn('Keep practicing', 'ghost', () => { practice = true; coach('Practice throws are not saved. <b>Hold and flick up.</b>'); render(); });
+  if (practice) btn('Back to today', 'ghost', () => { practice = false; coach(''); render(); });
+  btn(sound.on ? 'Sound on' : 'Sound off', 'ghost', () => { sound.on = !sound.on; render(); });
+  if (!flight && !hold && !$('coach').innerHTML) coach(done && !practice ? `That’s your ${THROWS} throws. Best: <b>${best} skips</b>. Come back tomorrow for a new lake.` : '<b>Press and hold</b> near the bottom, then <b>flick up</b> to throw.');
+}
+async function copy() {
+  const best = state.mine.reduce((m, t) => Math.max(m, t.n), 0);
+  const row = state.mine.map(t => t.n).join(' · ');
+  const text = `SKIP Lake No. ${dayNo + 1}\n🪨 best ${best} skips\nthrows: ${row}`;
+  try { await navigator.clipboard.writeText(text); toast('Copied. Paste it in the comments.'); } catch { $('toast').textContent = text.replace(/\n/g, ' · '); }
+}
+
+// ---------- sound ----------
+const sound = {
+  on: true, ac: null,
+  wake() { if (!this.ac) { try { this.ac = new (window.AudioContext || window.webkitAudioContext)(); } catch {} } this.ac?.resume?.(); },
+  plink(i, good) {
+    if (!this.on || !this.ac) return; const a = this.ac, t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(420 + i * 38 + good * 60, t); o.frequency.exponentialRampToValueAtTime(220 + i * 20, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.2);
+  },
+  plunk() {
+    if (!this.on || !this.ac) return; const a = this.ac, t = a.currentTime, n = a.sampleRate * 0.35, buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3);
+    const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(); f.type = 'lowpass'; f.frequency.value = 900; g.gain.value = 0.35;
+    s.buffer = buf; s.connect(f).connect(g).connect(a.destination); s.start(t);
+  },
+};
+
+addEventListener('resize', resize);
+loadLocal(); resize(); render(); requestAnimationFrame(frame); connect();
+</script>
