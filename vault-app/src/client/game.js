@@ -23,36 +23,63 @@ function painter(cv) {
   const ctx = cv.getContext('2d'); let DPR = 1, T = 0, layer = null, layerSig = '', lightCv = null, tintCv = null;
   const rnd = (x, y, i) => { const n = Math.sin(x * 127.1 + y * 311.7 + i * 74.7) * 43758.5453; return n - Math.floor(n); };
   function boards(L, x, y) {
-    // three oak planks per tile, joints staggered, a little grain and a soft sheen
-    const X = x * T, Y = y * T, h = T / 3;
+    // Oak planks laid across the whole floor (three rows per tile, lengths and joints on one board-wide grid,
+    // so the floor reads as boards, not squares), a little grain and sheen, and a faint tile grid for counting moves.
+    const X = x * T, Y = y * T, h = T / 3, seg = T * 1.6;
+    L.save(); L.beginPath(); L.rect(X - 0.5, Y - 0.5, T + 1, T + 1); L.clip();
     for (let i = 0; i < 3; i++) {
-      L.fillStyle = rnd(x, y, i) > 0.5 ? C.floor : C.floor2; L.fillRect(X, Y + i * h, T, h);
-      const sheen = L.createLinearGradient(X, Y + i * h, X, Y + (i + 1) * h); sheen.addColorStop(0, 'rgba(255,230,190,0.07)'); sheen.addColorStop(1, 'rgba(0,0,0,0.06)');
-      L.fillStyle = sheen; L.fillRect(X, Y + i * h, T, h);
+      const r = y * 3 + i, shift = rnd(r, 0, 7) * seg, py = Y + i * h;
+      for (let k = Math.floor((X + shift) / seg); k * seg - shift < X + T + 1; k++) {
+        const sx = k * seg - shift, t = rnd(k, r, 2);
+        L.fillStyle = t > 0.5 ? C.floor : C.floor2; L.fillRect(sx, py, seg, h);
+        L.fillStyle = t > 0.78 ? 'rgba(255,225,180,0.05)' : t < 0.2 ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0)'; L.fillRect(sx, py, seg, h);
+        if (sx >= X - 0.5 && sx <= X + T + 0.5) { L.fillStyle = C.grain; L.fillRect(sx, py, 1, h); }
+      }
+      const sheen = L.createLinearGradient(X, py, X, py + h); sheen.addColorStop(0, 'rgba(255,230,190,0.07)'); sheen.addColorStop(1, 'rgba(0,0,0,0.06)');
+      L.fillStyle = sheen; L.fillRect(X, py, T, h);
       L.strokeStyle = C.grain; L.globalAlpha = 0.45; L.lineWidth = 1;
-      for (let g = 0; g < 2; g++) { const gy = Y + i * h + h * (0.3 + 0.4 * rnd(x, y, i * 3 + g)); L.beginPath(); L.moveTo(X + T * rnd(x, y, 9 + g), gy); L.quadraticCurveTo(X + T * (rnd(x, y, 9 + g) + 0.2), gy + 1.2, X + T * Math.min(1, rnd(x, y, 9 + g) + 0.45), gy + 0.4); L.stroke(); }
-      L.globalAlpha = 1; L.fillStyle = C.grain; L.fillRect(X, Y + (i + 1) * h - 1, T, 1);
-      const j = X + T * (((x * 3 + y * 7 + i * 5) % 4) / 4 + 0.12); L.fillRect(j, Y + i * h, 1, h);
+      for (let g = 0; g < 2; g++) { const gy = py + h * (0.3 + 0.4 * rnd(x, y, i * 3 + g)); L.beginPath(); L.moveTo(X + T * rnd(x, y, 9 + g), gy); L.quadraticCurveTo(X + T * (rnd(x, y, 9 + g) + 0.2), gy + 1.2, X + T * Math.min(1, rnd(x, y, 9 + g) + 0.45), gy + 0.4); L.stroke(); }
+      L.globalAlpha = 1; L.fillStyle = C.grain; L.fillRect(X, py + h - 1, T, 1);
     }
+    L.restore();
+    L.fillStyle = 'rgba(0,0,0,0.07)'; L.fillRect(X, Y, T, 1); L.fillRect(X, Y, 1, T);
   }
-  function brick(L, x, y) {
-    // a wall seen from above: a brick top, a dark front face below it, a lit top edge
-    const X = x * T, Y = y * T, top = T * 0.78;
-    L.fillStyle = C.wallside; L.fillRect(X, Y, T, T);
-    L.fillStyle = C.mortar; L.fillRect(X, Y, T, top);
-    const rows = 3, bh = top / rows;
-    for (let r = 0; r < rows; r++) {
-      const off = (r + y) % 2 ? T / 4 : 0;
-      for (let b = -1; b < 3; b++) {
-        const bx = X + off + b * T / 2 + 1, w = T / 2 - 2, x0 = Math.max(X + 1, bx), x1 = Math.min(X + T - 1, bx + w);
-        if (x1 <= x0) continue;
-        L.fillStyle = C.wall; L.globalAlpha = 0.8 + 0.2 * rnd(x * 4 + b, y * 3 + r, 1); L.fillRect(x0, Y + r * bh + 1, x1 - x0, bh - 2);
-        L.globalAlpha = 0.12; L.fillStyle = '#ffd9c0'; L.fillRect(x0, Y + r * bh + 1, x1 - x0, 1); L.globalAlpha = 1;
+  function brick(L, V, x, y) {
+    // A wall seen from above. Bricks sit on one grid across the whole board, so neighbouring wall tiles join
+    // into one mass; a front face (and its lit lip) shows only where open floor lies below; edges that face
+    // open floor catch a little rim light. All of this is drawn once, into the cached layer.
+    const X = x * T, Y = y * T;
+    const open = (dx, dy) => { const nx = x + dx, ny = y + dy; return nx >= 0 && ny >= 0 && nx < V.w && ny < V.h && !isSolid(V, nx, ny); };
+    const faceH = open(0, 1) ? T * 0.26 : 0, top = T - faceH;
+    // (each tile's area overlaps its neighbours by half a pixel, so no seams show between tiles)
+    L.save(); L.beginPath(); L.rect(X - 0.5, Y - 0.5, T + 1, top + (faceH ? 0.5 : 1)); L.clip();
+    L.fillStyle = C.mortar; L.fillRect(X - 0.5, Y - 0.5, T + 1, top + 1);
+    const bh = T / 3, bw = T / 2;
+    for (let r = Math.floor(Y / bh + 1e-6); r * bh < Y + top - 1e-6; r++) {
+      const off = r % 2 ? bw / 2 : 0, by = r * bh;
+      for (let c = Math.floor((X - off) / bw) - 1; c * bw + off < X + T + 1; c++) {
+        const bx = c * bw + off;
+        L.globalAlpha = 0.74 + 0.26 * rnd(c, r, 1); L.fillStyle = C.wall; L.fillRect(bx + 1, by + 1, bw - 2, bh - 2);
+        L.globalAlpha = 0.11; L.fillStyle = '#ffd9c0'; L.fillRect(bx + 1, by + 1, bw - 2, 1);
+        L.globalAlpha = 0.16; L.fillStyle = '#000'; L.fillRect(bx + 1, by + bh - 2, bw - 2, 1);
       }
     }
-    const face = L.createLinearGradient(X, Y + top, X, Y + T); face.addColorStop(0, '#2a1d18'); face.addColorStop(1, C.wallside);
-    L.fillStyle = face; L.fillRect(X, Y + top, T, T - top);
-    L.fillStyle = 'rgba(255,220,200,0.10)'; L.fillRect(X, Y, T, 1.5);
+    // deep wall (no floor beside it) sits a little darker, so the eye goes to the corridors
+    if (!open(0, -1) && !open(0, 1) && !open(-1, 0) && !open(1, 0)) { L.globalAlpha = 1; L.fillStyle = 'rgba(8,4,6,0.16)'; L.fillRect(X - 0.5, Y - 0.5, T + 1, T + 1); }
+    L.globalAlpha = 1; L.restore();
+    // rim light on edges that face open floor
+    L.fillStyle = 'rgba(255,222,200,0.16)';
+    if (open(0, -1)) L.fillRect(X, Y, T, 1.5);
+    if (open(-1, 0)) L.fillRect(X, Y, 1.2, top);
+    if (open(1, 0)) L.fillRect(X + T - 1.2, Y, 1.2, top);
+    if (faceH) {
+      // the front face: darker, with two mortar lines, a lit lip on top and a dark foot where it meets the floor
+      const face = L.createLinearGradient(X, Y + top, X, Y + T); face.addColorStop(0, '#3b2722'); face.addColorStop(1, C.wallside);
+      L.fillStyle = face; L.fillRect(X, Y + top, T, faceH);
+      L.fillStyle = 'rgba(0,0,0,0.22)'; L.fillRect(X, Y + top + faceH * 0.45, T, 1); L.fillRect(X, Y + top + faceH * 0.78, T, 1);
+      L.fillStyle = 'rgba(255,214,186,0.22)'; L.fillRect(X, Y + top, T, 1.5);
+      L.fillStyle = 'rgba(0,0,0,0.35)'; L.fillRect(X, Y + T - 1, T, 1);
+    }
   }
   function isSolid(V, x, y) {
     if (x < 0 || y < 0 || x >= V.w || y >= V.h) return true;
@@ -66,6 +93,7 @@ function painter(cv) {
       const X = x * T, Y = y * T;
       if (isSolid(V, x, y - 1)) { const g = L.createLinearGradient(X, Y, X, Y + T * 0.45); g.addColorStop(0, 'rgba(10,5,2,0.5)'); g.addColorStop(1, 'rgba(10,5,2,0)'); L.fillStyle = g; L.fillRect(X, Y, T, T * 0.45); }
       if (isSolid(V, x - 1, y)) { const g = L.createLinearGradient(X, Y, X + T * 0.22, Y); g.addColorStop(0, 'rgba(10,5,2,0.32)'); g.addColorStop(1, 'rgba(10,5,2,0)'); L.fillStyle = g; L.fillRect(X, Y, T * 0.22, T); }
+      if (isSolid(V, x, y + 1) && y + 1 < V.h) { const g = L.createLinearGradient(X, Y + T, X, Y + T * 0.84); g.addColorStop(0, 'rgba(10,5,2,0.28)'); g.addColorStop(1, 'rgba(10,5,2,0)'); L.fillStyle = g; L.fillRect(X, Y + T * 0.84, T, T * 0.16); }
       if (isSolid(V, x + 1, y)) { const g = L.createLinearGradient(X + T, Y, X + T * 0.78, Y); g.addColorStop(0, 'rgba(10,5,2,0.32)'); g.addColorStop(1, 'rgba(10,5,2,0)'); L.fillStyle = g; L.fillRect(X + T * 0.78, Y, T * 0.22, T); }
     }
     // and the room falls off into darkness at its edges
@@ -87,7 +115,7 @@ function painter(cv) {
       if (!layer || layerSig !== sig) {
         layer = document.createElement('canvas'); layer.width = cv.width; layer.height = cv.height; layerSig = sig;
         const L = layer.getContext('2d'); L.setTransform(DPR, 0, 0, DPR, 0, 0);
-        for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) isSolid(V, x, y) ? brick(L, x, y) : boards(L, x, y);
+        for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) isSolid(V, x, y) ? brick(L, V, x, y) : boards(L, x, y);
         if (lit) shade(L, V);
       }
       ctx.drawImage(layer, 0, 0, V.w * T, V.h * T);
@@ -152,8 +180,19 @@ function painter(cv) {
         ctx.strokeStyle = C.laser; ctx.globalAlpha = 0.45 + 0.4 * Math.sin(now / 80); ctx.setLineDash([T * 0.08, T * 0.12]); ctx.lineDashOffset = -now / 30; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(fx, fy); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1;
       }
       // the emitter housing and its lens
-      ctx.fillStyle = '#16100e'; ctx.beginPath(); ctx.roundRect(l.at[0] * T + T * 0.18, l.at[1] * T + T * 0.18, T * 0.64, T * 0.64, T * 0.12); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1; ctx.stroke();
+      // a gunmetal plate bolted to the wall: lit from above, a bevelled top edge, four rivets, a barrel along the beam
+      const px = l.at[0] * T + T * 0.17, py = l.at[1] * T + T * 0.17, ps = T * 0.66;
+      const plate = ctx.createLinearGradient(0, py, 0, py + ps); plate.addColorStop(0, '#3c3538'); plate.addColorStop(1, '#141012');
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.roundRect(px + 1, py + 2, ps, ps, T * 0.12); ctx.fill();
+      ctx.fillStyle = plate; ctx.beginPath(); ctx.roundRect(px, py, ps, ps, T * 0.12); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.13)'; ctx.fillRect(px + T * 0.1, py + 1, ps - T * 0.2, 1);
+      ctx.fillStyle = '#665c60'; for (const [rx, ry] of [[0.1, 0.1], [0.56, 0.1], [0.1, 0.56], [0.56, 0.56]]) { ctx.beginPath(); ctx.arc(px + T * rx, py + T * ry, Math.max(0.8, T * 0.022), 0, 7); ctx.fill(); }
+      ctx.save(); ctx.translate(ex, ey); ctx.rotate(Math.atan2(dy, dx));
+      ctx.fillStyle = '#231d20'; ctx.fillRect(0, -T * 0.09, T * 0.3, T * 0.18);
+      ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(0, -T * 0.09, T * 0.3, 1);
+      ctx.fillStyle = '#0d0a0b'; ctx.fillRect(T * 0.26, -T * 0.07, T * 0.05, T * 0.14);
+      ctx.restore();
       const lens = on ? 1 : next ? 0.55 + 0.35 * Math.sin(now / 80) : 0.25;
       const lg = ctx.createRadialGradient(sx, sy, 0, sx, sy, T * 0.2); lg.addColorStop(0, `rgba(255,90,105,${lens})`); lg.addColorStop(1, 'rgba(255,90,105,0)');
       ctx.fillStyle = lg; ctx.fillRect(sx - T * 0.2, sy - T * 0.2, T * 0.4, T * 0.4);
