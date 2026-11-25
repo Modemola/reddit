@@ -62,6 +62,97 @@ const sctx = scene.getContext('2d')
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches
 let floorAt = -1e9
 let floorY = 0
+
+// The room behind the card: brick everywhere, a planked corridor along the bottom where the guard walks,
+// lit the way the game is (wall faces, rim light, contact shadows). Painted once; repainted only when the
+// card's size or the corridor's height changes.
+const room = document.getElementById('room') as HTMLCanvasElement | null
+let roomSig = ''
+const hash = (a: number, b: number, c: number): number => {
+  const n = Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453
+  return n - Math.floor(n)
+}
+function paintRoom(
+  w: number,
+  h: number,
+  dpr: number,
+  gy: number,
+  s: number,
+): void {
+  const rc = room?.getContext('2d')
+  if (!room || !rc) return
+  const sig = `${w}x${h}@${dpr}:${Math.round(gy)}`
+  if (sig === roomSig) return
+  roomSig = sig
+  room.width = Math.round(w * dpr)
+  room.height = Math.round(h * dpr)
+  rc.setTransform(dpr, 0, 0, dpr, 0, 0)
+  const T = s * 1.5
+  const bh = T / 3
+  const bw = T / 2
+  // brick
+  rc.fillStyle = '#2a1c18'
+  rc.fillRect(0, 0, w, h)
+  for (let r = 0; r * bh < h; r++) {
+    const off = r % 2 ? bw / 2 : 0
+    for (let c = -1; c * bw + off < w; c++) {
+      rc.globalAlpha = 0.72 + 0.28 * hash(c, r, 1)
+      rc.fillStyle = '#6e3a2e'
+      rc.fillRect(c * bw + off + 1, r * bh + 1, bw - 2, bh - 2)
+      rc.globalAlpha = 0.1
+      rc.fillStyle = '#ffd9c0'
+      rc.fillRect(c * bw + off + 1, r * bh + 1, bw - 2, 1)
+    }
+  }
+  rc.globalAlpha = 1
+  // the corridor: planks laid across, three rows
+  const top = gy - T * 0.5
+  const bottom = Math.min(h, gy + T * 0.5)
+  const face = T * 0.26
+  const ph = (bottom - top) / 3
+  for (let i = 0; i < 3; i++) {
+    const seg = T * 1.6
+    const shift = hash(i, 0, 7) * seg
+    for (let k = -1; k * seg - shift < w; k++) {
+      rc.fillStyle = hash(k, i, 2) > 0.5 ? '#8a6a4a' : '#7d5f42'
+      rc.fillRect(k * seg - shift, top + i * ph, seg, ph)
+      rc.fillStyle = '#4e3a28'
+      rc.fillRect(k * seg - shift, top + i * ph, 1, ph)
+    }
+    rc.fillStyle = '#4e3a28'
+    rc.fillRect(0, top + (i + 1) * ph - 1, w, 1)
+  }
+  // the wall's front face above the corridor, its lit lip, and the shadow it casts on the floor
+  const fg = rc.createLinearGradient(0, top - face, 0, top)
+  fg.addColorStop(0, '#3b2722')
+  fg.addColorStop(1, '#1f1512')
+  rc.fillStyle = fg
+  rc.fillRect(0, top - face, w, face)
+  rc.fillStyle = 'rgba(255,214,186,0.22)'
+  rc.fillRect(0, top - face, w, 1.5)
+  const sh = rc.createLinearGradient(0, top, 0, top + T * 0.45)
+  sh.addColorStop(0, 'rgba(10,5,2,0.5)')
+  sh.addColorStop(1, 'rgba(10,5,2,0)')
+  rc.fillStyle = sh
+  rc.fillRect(0, top, w, T * 0.45)
+  if (bottom < h) {
+    rc.fillStyle = 'rgba(255,222,200,0.16)'
+    rc.fillRect(0, bottom, w, 1.5)
+  }
+  // the room falls off into darkness at its edges
+  const v = rc.createRadialGradient(
+    w / 2,
+    h * 0.45,
+    Math.min(w, h) * 0.3,
+    w / 2,
+    h * 0.45,
+    Math.hypot(w, h) * 0.6,
+  )
+  v.addColorStop(0, 'rgba(0,0,0,0)')
+  v.addColorStop(1, 'rgba(0,0,0,0.45)')
+  rc.fillStyle = v
+  rc.fillRect(0, 0, w, h)
+}
 function drawScene(now: number): void {
   if (!sctx) return
   const dpr = Math.min(devicePixelRatio || 1, 2)
@@ -87,6 +178,7 @@ function drawScene(now: number): void {
       scene.getBoundingClientRect().top
   }
   const y = Math.min(h - s * 0.55, Math.max(h - s * 1.3, floorY + s * 0.85))
+  paintRoom(w, h, dpr, y, s)
   const ang = dir > 0 ? 0 : Math.PI
   const sweep = still ? 0 : Math.sin(now / 1300) * 0.35
   // the torch beam
