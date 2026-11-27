@@ -11,6 +11,7 @@ Every night a new VAULT post goes up in the subreddit. You move one tile at a ti
 - **The game:** [`vault-app/`](vault-app/) (how to play, how it works, how to run it)
 - **Submission text:** [`docs/devpost.md`](docs/devpost.md)
 - **Demo plan:** [`docs/demo-plan.md`](docs/demo-plan.md)
+- **Launch kit** (getting players): [`docs/launch-kit.md`](docs/launch-kit.md)
 - **Early prototypes:** [`prototype/`](prototype/) (VAULT’s first version, plus two ideas we tried and set aside)
 
 ```bash
