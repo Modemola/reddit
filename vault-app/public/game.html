@@ -895,6 +895,51 @@
       opacity: 1;
       transform: translate(-50%, 0);
     }
+    .overlay .tipline {
+      max-width: 30ch;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      color: var(--gem);
+    }
+    .overlay .storyline {
+      max-width: 30ch;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      color: var(--text);
+    }
+    .overlay .cardbtn {
+      pointer-events: auto;
+      font-size: 0.85rem;
+      padding: 8px 14px;
+    }
+    .overlay.tight .tipline,
+    .overlay.tight .storyline {
+      font-size: 0.8rem;
+      line-height: 1.3;
+    }
+    .overlay.tight .cardbtn {
+      padding: 6px 12px;
+      font-size: 0.78rem;
+    }
+    /* the pebble button asks to be tried (Loose Change, after a bust) */
+    #pebble.nudge {
+      animation: nudge 1.6s ease-in-out infinite;
+    }
+    @keyframes nudge {
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 #5ef0d600;
+      }
+      50% {
+        box-shadow: 0 0 0 4px #5ef0d688;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #pebble.nudge {
+        animation: none;
+        box-shadow: 0 0 0 2px #5ef0d6aa;
+      }
+    }
     .overlay .extras:empty {
       display: none;
     }
