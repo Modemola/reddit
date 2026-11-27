@@ -740,7 +740,7 @@ function renderLastNight() {
     if (r.mine) lines.push(r.mine.people ? `Your vault <b>${e(r.mine.name)}</b> stumped <b>${r.mine.people - r.mine.cracked}</b> of <b>${r.mine.people}</b> ${r.mine.people === 1 ? 'thief' : 'thieves'}.` : `Nobody got to your vault <b>${e(r.mine.name)}</b>. Build again tonight.`);
     if (r.place) lines.push(`You placed <b>#${r.place.place}</b> of ${r.place.of} on ${dn}, in ${r.place.moves} moves.`);
     else if (r.daily.fastest) lines.push(`Fastest on ${dn}: u/${e(r.daily.fastest.name)} in <b>${r.daily.fastest.moves}</b> moves.`);
-    if (r.deadliest && r.deadliest.name !== r.mine?.name) lines.push(`Deadliest: <b>${e(r.deadliest.name)}</b> by u/${e(r.deadliest.author || 'someone')}, stumped ${r.deadliest.stumped} of ${r.deadliest.people}.`);
+    if (r.deadliest && !r.deadliest.yours) lines.push(`Deadliest: <b>${e(r.deadliest.name)}</b> by u/${e(r.deadliest.author || 'someone')}, stumped ${r.deadliest.stumped} of ${r.deadliest.people}.`);
   }
   sec.hidden = !lines.length;
   $('last').innerHTML = lines.map(l => `<div class="sub">${l}</div>`).join('');

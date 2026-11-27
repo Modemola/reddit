@@ -93,6 +93,9 @@ export async function recordAttempt(
     const tally = `tally:${key}`
     if (result === 'won') {
       counts = !!(await redis.hSetNX(tally, `${userId}:won`, '1'))
+      // how many busts came before the first crack (the share line's red squares)
+      if (counts)
+        await redis.hSetNX(`firstcrack:${userId}`, key, String(prev.tries))
       // after a crack, none of this player's busts count any more
       if (counts) await redis.hIncrBy(tally, `${userId}:busts`, 1_000_000)
     } else {
@@ -104,8 +107,8 @@ export async function recordAttempt(
     await redis.hIncrBy(`stats:${key}`, 'tries', 1)
     if (result === 'caught') {
       await redis.hIncrBy(`stats:${key}`, 'caught', 1)
-      // filed under the vault's own night (a player vault), or tonight (a training vault)
-      const night = /^p_.+_(\d+)$/.exec(key)?.[1] ?? nightOf(Date.now())
+      // filed under the vault's own night (a player vault or a Daily Vault), or tonight (a training vault)
+      const night = /^(?:p_.+_|d)(\d+)$/.exec(key)?.[1] ?? nightOf(Date.now())
       await redis.hIncrBy(`nightstats:${night}`, 'caught', 1)
       if (caughtAt !== null)
         await redis.hIncrBy(`marks:${key}`, String(caughtAt), 1)
@@ -264,9 +267,17 @@ export async function rankCrack(
 }
 
 /** A night's Daily Vault, generated once and kept, so it never changes even if the generator does. */
-export async function getDaily(
-  night: number,
-): Promise<{level: Level; best: number}> {
+const dailyInFlight = new Map<number, Promise<{level: Level; best: number}>>()
+export function getDaily(night: number): Promise<{level: Level; best: number}> {
+  // concurrent first requests share one generation instead of each running it
+  let p = dailyInFlight.get(night)
+  if (!p) {
+    p = loadDaily(night).finally(() => dailyInFlight.delete(night))
+    dailyInFlight.set(night, p)
+  }
+  return p
+}
+async function loadDaily(night: number): Promise<{level: Level; best: number}> {
   const cached = await redis.get(`daily:${night}`)
   if (cached)
     try {
@@ -307,6 +318,15 @@ export async function leaders(
         ? {place: i + 1, moves: rows[i]?.moves ?? 0, of: rows.length}
         : null,
   }
+}
+
+/** Busts before this player's first crack of a vault, if they've cracked it. */
+export async function bustsBeforeCrack(
+  userId: string,
+  key: string,
+): Promise<number | null> {
+  const v = (await redis.hGetAll(`firstcrack:${userId}`))[key]
+  return v === undefined ? null : Number(v)
 }
 
 /** Takes a player vault off its night's list and stops it being played. */

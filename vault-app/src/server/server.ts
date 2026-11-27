@@ -38,6 +38,7 @@ import {
   W,
 } from '../shared/vault.ts'
 import {
+  bustsBeforeCrack,
   claimShare,
   extendStreak,
   getDaily,
@@ -94,7 +95,8 @@ async function route(
   } else {
     switch (endpoint) {
       case Endpoint.Init:
-        rsp = await routeInit()
+        // the feed card asks for a lighter init (no recap, no leaderboard)
+        rsp = await routeInit(/[?&]card=1\b/.test(reqMsg.url ?? ''))
         break
       case Endpoint.Attempt:
         rsp = await routeAttempt(reqMsg)
@@ -190,7 +192,7 @@ async function playerVaults(
   return vaults.filter(v => v !== null)
 }
 
-async function routeInit(): Promise<InitRsp> {
+async function routeInit(card = false): Promise<InitRsp> {
   const night = tonight()
   const userId = context.userId ?? null
   const dk = dailyKey(night)
@@ -220,8 +222,8 @@ async function routeInit(): Promise<InitRsp> {
     nightTotals(night),
     getDaily(night),
     getStats(dk),
-    leaders(dk, userId),
-    night > 0 ? recapFor(night - 1, userId) : Promise.resolve(null),
+    card ? Promise.resolve({leaders: [], me: null}) : leaders(dk, userId),
+    night > 0 && !card ? recapFor(night - 1, userId) : Promise.resolve(null),
   ])
   const mine = vaults.find(v => v.owner === userId) ?? null
   const houseStats: InitRsp['house'] = {}
@@ -440,10 +442,12 @@ async function routeShare(
   let text = `VAULT, Night ${night}: I ${verb}.`
   if (dn !== null) {
     // spoiler-free: one red square per bust before this, then this run's square
-    const tries = (await getProgress(userId))[req.key]?.tries ?? 1
+    const busts =
+      state.status === 'won'
+        ? ((await bustsBeforeCrack(userId, req.key)) ?? 0)
+        : Math.max(0, ((await getProgress(userId))[req.key]?.tries ?? 1) - 1)
     const squares =
-      '🟥'.repeat(Math.min(9, Math.max(0, tries - 1))) +
-      (state.status === 'won' ? '🟩' : '🟥')
+      '🟥'.repeat(Math.min(9, busts)) + (state.status === 'won' ? '🟩' : '🟥')
     text =
       state.status === 'won'
         ? `VAULT Daily #${dn + 1}: cracked in ${used} (perfect ${best}) ${squares}`
@@ -501,6 +505,7 @@ async function routeShare(
 async function createNightPost() {
   const night = tonight()
   const theme = themeFor(night)
+  await getDaily(night)
   const post = await reddit.submitCustomPost({
     title: theme
       ? `VAULT, Night ${night + 1}: it’s ${theme.name}. Crack tonight’s vaults, then build one that catches everyone`
@@ -522,25 +527,29 @@ async function createNightPost() {
   return post
 }
 
-/** Last night in numbers; with a userId, also that player's own vault and Daily Vault place. */
-async function recapFor(
-  night: number,
-  userId: string | null,
-): Promise<LastNight> {
+type Recap = Omit<LastNight, 'mine' | 'place'> & {deadliestOwner: string | null}
+
+/** Last night in numbers, the same for everyone: computed once per night and kept. */
+async function sharedRecap(night: number): Promise<Recap> {
+  const cached = await redis.get(`recap:${night}`)
+  if (cached)
+    try {
+      return JSON.parse(cached)
+    } catch {
+      // recompute below
+    }
   const dk = dailyKey(night)
-  const [top, totals, daily, dailyStats, board, mine] = await Promise.all([
+  const [top, totals, daily, dailyStats, board] = await Promise.all([
     redis.zRange(`night:${night}:deadly`, 0, 0, {by: 'rank', reverse: true}),
     nightTotals(night),
     getDaily(night),
     getStats(dk),
-    leaders(dk, userId, 1),
-    userId ? getVault(playerKey(userId, night)) : Promise.resolve(null),
+    leaders(dk, null, 1),
   ])
   const owner = top[0]?.member
   const dv = owner ? await getVault(playerKey(owner, night)) : null
   const ds = dv ? await getStats(dv.key) : null
-  const ms = mine ? await getStats(mine.key) : null
-  return {
+  const r: Recap = {
     night,
     built: totals.built,
     caught: totals.caught,
@@ -553,6 +562,7 @@ async function recapFor(
             people: ds.people,
           }
         : null,
+    deadliestOwner: dv ? dv.owner : null,
     daily: {
       name: daily.level.name,
       best: daily.best,
@@ -560,6 +570,31 @@ async function recapFor(
       people: dailyStats.people,
       fastest: board.leaders[0] ?? null,
     },
+  }
+  // only a finished night is kept (tonight's numbers are still moving)
+  if (night < tonight()) await redis.set(`recap:${night}`, JSON.stringify(r))
+  return r
+}
+
+/** Last night for one player: the shared recap, plus their own vault and Daily Vault place. */
+async function recapFor(
+  night: number,
+  userId: string | null,
+): Promise<LastNight> {
+  const dk = dailyKey(night)
+  const [shared, board, mine] = await Promise.all([
+    sharedRecap(night),
+    userId ? leaders(dk, userId, 0) : Promise.resolve({leaders: [], me: null}),
+    userId ? getVault(playerKey(userId, night)) : Promise.resolve(null),
+  ])
+  const ms = mine ? await getStats(mine.key) : null
+  const {deadliestOwner, ...r} = shared
+  return {
+    ...r,
+    deadliest: r.deadliest
+      ? {...r.deadliest, yours: !!userId && deadliestOwner === userId}
+      : null,
+    night,
     mine:
       mine && ms
         ? {
