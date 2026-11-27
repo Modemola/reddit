@@ -334,13 +334,13 @@ function settleQuietly(e) {
 }
 function play(L, key, label, next, owner) {
   if (G.over === 'pending' && G.ending?.run === G.run) settleQuietly(G.ending);
-  Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1, tryNo: (progress[key]?.tries || 0) + 1, run: (G.run || 0) + 1 });
+  Object.assign(G, { L, key, label, next, owner, V: parseL(L), over: null, moves: 0, anim: 1, tryNo: (progress[key]?.tries || 0) + 1, run: (G.run || 0) + 1, briefed: false });
   for (const f of G.frames || []) f.bmp?.close?.();
   G.log = []; G.queue = null; G.face = 'U'; G.gAng = []; G.cAng = []; FX.parts = []; FX.shake = FX.flash = FX.punch = null; G.downAt = {}; G.s = startState(G.V); G.prev = G.s; G.aim = false; G.barks = []; G.pebbleFx = null; G.frames = []; G.lastCap = 0; G.endAt = 0; G.result = null;
   G.best = bestFor(key, L, G.V);
   G.ghost = loadGhost(key, G.V);
   explain(G.V);
-  $('overlay').hidden = true; $('coach').hidden = true; $('crowd').hidden = false; coachState.tip = null; show('play'); fitBoard(); renderPlay(); music.play('heist'); music.setMood('calm');
+  $('overlay').hidden = true; $('coach').hidden = true; $('crowd').hidden = false; coachState.tip = null; show('play'); coach(); fitBoard(); renderPlay(); // (the brief is in place before the board is sized) music.play('heist'); music.setMood('calm');
 }
 function restart() { play(G.L, G.key, G.label, G.next, G.owner); }
 function move(m) {
@@ -373,10 +373,14 @@ function finish(n) {
   if (n.status === 'caught') {
     sfx.alarm(); music.sting('caught'); G.over = 'caught';
     overlay('caught', 'CAUGHT', why(n.cause, G.moves), 'Tap anywhere to try again');
+    if (n.cause === 'guard' && G.s.peb > 0 && G.V.guards.length && G.key !== 'test') addCardLine('Stuck? Throw your pebble past the guard (the Pebble button, or P). They turn to look at the noise for two turns; then sneak up behind them.', 'tipline');
   } else {
     sfx.win(); music.sting('cracked'); G.over = 'won';
     saveGhost(G.key, G.log);
-    overlay('won', 'CRACKED', `${G.moves} moves${G.moves <= G.best ? ', a perfect run.' : `. The best possible is ${G.best}.`} ${tries === 1 ? 'First try.' : `Cracked on try ${tries}.`}`, G.next ? 'Tap anywhere for the next vault' : 'Tap anywhere to go back');
+    const job = /^h(\d)$/.exec(G.key), jn = job ? +job[1] : 0, last = jn === LEVELS.length;
+    overlay('won', 'CRACKED', `${G.moves} moves${G.moves <= G.best ? ', a perfect run.' : `. The best possible is ${G.best}.`} ${tries === 1 ? 'First try.' : `Cracked on try ${tries}.`}`, G.next && jn ? `Tap anywhere for job ${jn + 1}: ${LEVELS[jn].name}` : last ? 'Tap anywhere to see tonight’s vaults' : 'Tap anywhere to go back');
+    if (last) addCardLine('That’s the training done. The real jobs are the vaults other players built tonight, and yours could be next.', 'storyline');
+    if (jn && !last) addCardButton('Tonight’s vaults', () => show('home'));
   }
   // what we show is local; what counts is the server's replay of the same moves
   progress[G.key] = { tries, won: prev.won || n.status === 'won', moves: n.status === 'won' ? (prev.won ? Math.min(prev.moves, G.moves) : G.moves) : prev.moves };
@@ -384,6 +388,16 @@ function finish(n) {
   renderPlay();
 }
 const why = (c, m) => ({ guard: 'A guard spotted you', laser: 'You walked into a live laser', camera: 'A camera caught you' }[c] || 'You were caught') + (m ? ` on move ${m}.` : '.');
+// extra lines and buttons on a result card (kept above the share button and the 'tap' line)
+function addCardLine(text, cls) {
+  const el = document.createElement('div'); el.className = cls; el.textContent = text;
+  $('overlay').querySelector('.extras')?.appendChild(el); fitOverlay();
+}
+function addCardButton(label, fn) {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'ghost cardbtn'; b.textContent = label;
+  b.onclick = e => { e.stopPropagation(); fn(); };
+  const o = $('overlay'), small = o.querySelector('.small'); o.insertBefore(b, small); fitOverlay();
+}
 function overlay(cls, h, p, sub) {
   const o = $('overlay'); o.className = 'overlay ' + cls; o.hidden = false;
   // with a keyboard and mouse, say which key continues
@@ -640,6 +654,7 @@ function renderPlay() {
   }
   const pb = $('pebble'); pb.textContent = G.aim ? 'Cancel' : `Pebble ×${G.s?.peb ?? 0}`; pb.disabled = !G.s?.peb && !G.aim;
   pb.className = G.aim ? 'primary' : 'ghost';
+  if (G.key === 'h3' && !G.aim && !G.over && G.s?.peb > 0 && (progress.h3?.tries || 0) >= 1) pb.classList.add('nudge');
   if (G.ghost) $('meta').title = 'The teal ghost is your best run on this vault.';
   $('meta').innerHTML = `moves <b>${G.moves}</b> · best possible <b>${G.best}</b>` + (G.ghost ? ` · <span class="ghostnote">your best <b>${G.ghost.length - 1}</b></span>` : '') + (G.key !== 'test' ? ` · try <b>${G.tryNo}</b>` : '');
 }
@@ -1224,6 +1239,20 @@ const TIPS = {
 };
 let tipsSeen = {}; try { tipsSeen = JSON.parse(localStorage.getItem('vault:tips') || '{}') || {}; } catch {}
 const coachState = { tip: null, at: 0, moves: 0 };
+// The training heist is six jobs; each opens with a one-line brief (until the first move).
+const BRIEFS = {
+  h1: 'Job 1 of 6. Swipe or tap to move; the guards move after you.',
+  h2: 'Job 2 of 6. Lasers blink on and off. Count the beat, then go.',
+  h3: 'Job 3 of 6. A guard blocks the corridor. Throw your pebble past them.',
+  h4: 'Job 4 of 6. A long patrol loops the vault. Wait for the gap.',
+  h5: 'Job 5 of 6. The camera turns every move. Pass while it looks away.',
+  h6: 'Job 6 of 6. Everything at once. Crack it to finish your training.',
+};
+function showBrief(text) {
+  coachState.tip = 'brief'; coachState.at = performance.now(); coachState.moves = 0; G.briefed = true;
+  tipsSeen.move = 1; // the first brief already says how to move
+  const el = $('coach'); el.textContent = text; el.hidden = false; $('crowd').hidden = true;
+}
 function showTip(k) {
   if (tipsSeen[k] || coachState.tip === k) return false;
   tipsSeen[k] = 1; try { localStorage.setItem('vault:tips', JSON.stringify(tipsSeen)); } catch {}
@@ -1235,11 +1264,12 @@ function coach() {
   const el = $('coach');
   // the opening tip makes way as soon as you move, so a warning can take its place
   const hide = () => { el.hidden = true; coachState.tip = null; $('crowd').hidden = false; };
-  if (coachState.tip === 'move' && G.moves >= 1) hide();
+  if ((coachState.tip === 'move' || coachState.tip === 'brief') && G.moves >= 1) hide();
   if (coachState.tip && (G.over || G.moves - coachState.moves >= 2) && performance.now() - coachState.at > 2500) hide();
   if (view !== 'play' || G.over || G.key === 'test' || coachState.tip) return;
   const V = G.V, s = G.s, nextS = { ...s, t: s.t + 1, gs: advanceGuards(s.gs) };
   if (G.aim && showTip('aim')) return;
+  if (G.moves === 0 && BRIEFS[G.key] && !G.briefed) { showBrief(BRIEFS[G.key]); return; }
   if (G.moves === 0 && showTip('move')) return;
   if (G.key === 'h3' && G.moves >= 2 && s.peb && showTip('pebble')) return;
   const near = (x, y) => Math.abs(x - s.pos[0]) + Math.abs(y - s.pos[1]) === 1;
