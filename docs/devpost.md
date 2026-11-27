@@ -25,6 +25,8 @@ Most daily games are one puzzle for everyone, solved alone. We wanted a daily ga
 
 **The Daily Vault.** Every night there's one official vault, the same for everyone. It's built from that night's parts and proven crackable by the solver. It leads the post's feed card and the home screen, ranks the fastest cracks on a leaderboard, and shares as a spoiler-free line like “VAULT Daily #12: cracked in 14 (perfect 12) 🟥🟥🟩”.
 
+**The morning after.** Each new nightly post opens with a recap comment, for example “Last night (Night 8): 14 vaults built, 63 thieves caught. Deadliest: The Pawnshop by u/night_owl, stumped 9 of 11. Daily Vault #8: cracked by 20 of 31; fastest u/quickhands in 12 moves (perfect 12).” Your home screen opens with *Last night*: what your vault did and where you placed.
+
 **Training heist.** Six jobs, each with a one-line brief, teach one idea each (timing, lasers, the pebble, long sight lines, cameras) and end in The Core, which uses all of them.
 
 **Build.** Everyone gets the same box of parts tonight, for example 8 walls, 2 guards and a camera, and twice a week the box has a theme (Laser Night, Double Patrol, All Eyes, Lockdown). You place walls, draw guard routes, set laser rhythms and camera sweeps, and name your vault. A solver checks it live as you build: it won’t let you publish a vault nobody could crack, and it tells you when yours is “a straight walk” or “nasty”. Stuck on a blank page? **Surprise me** builds a random vault from tonight’s parts that the solver has already proven crackable, ready to tweak. One vault per player per night.

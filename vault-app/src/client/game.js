@@ -707,7 +707,7 @@ function renderHome() {
     $('mine').innerHTML = `<div class="sub">${th ? `<b class="theme">Tonight is ${th.name}.</b> ${th.line} ` : ''}Tonight’s parts: <b>${partsLine()}</b>. Build a vault that catches people. You get one a night.</div>${INIT && !INIT.userId ? '<div class="sub"><b>Log in to Reddit</b> to publish your vault and keep your runs. You can still play and test everything.</div>' : ''}<div class="row"><button class="primary" id="go-build" type="button">Build tonight’s vault</button></div>`;
     $('go-build').onclick = () => show('build');
   }
-  renderDaily(); renderVaultOfTheNight();
+  renderLastNight(); renderDaily(); renderVaultOfTheNight();
   const list = (INIT?.others || []).slice().sort((a, b) => deadliness(b.stats) - deadliness(a.stats));
   $('others-line').innerHTML = crowdStatus !== 'live' ? crowdLine() : list.length ? 'Deadliest first. Each one was built by another player from tonight’s parts.' : 'Nobody else has built a vault tonight yet. Be the first, or check back later.';
   $('others').innerHTML = '';
@@ -731,6 +731,19 @@ function vaultOfTheNight() {
   const all = [INIT?.mine, ...(INIT?.others || [])].filter(v => v && v.stats.people - v.stats.cracked > 0);
   all.sort((a, b) => deadliness(b.stats) - deadliness(a.stats) || b.stats.caught - a.stats.caught);
   return all[0] || null;
+}
+// How last night went: your vault, your place on the Daily Vault, the deadliest vault.
+function renderLastNight() {
+  const r = INIT?.lastNight, sec = $('last-section'), lines = [];
+  if (r) {
+    const e = escapeHtml, dn = `Daily Vault #${r.night + 1}`;
+    if (r.mine) lines.push(r.mine.people ? `Your vault <b>${e(r.mine.name)}</b> stumped <b>${r.mine.people - r.mine.cracked}</b> of <b>${r.mine.people}</b> ${r.mine.people === 1 ? 'thief' : 'thieves'}.` : `Nobody got to your vault <b>${e(r.mine.name)}</b>. Build again tonight.`);
+    if (r.place) lines.push(`You placed <b>#${r.place.place}</b> of ${r.place.of} on ${dn}, in ${r.place.moves} moves.`);
+    else if (r.daily.fastest) lines.push(`Fastest on ${dn}: u/${e(r.daily.fastest.name)} in <b>${r.daily.fastest.moves}</b> moves.`);
+    if (r.deadliest && r.deadliest.name !== r.mine?.name) lines.push(`Deadliest: <b>${e(r.deadliest.name)}</b> by u/${e(r.deadliest.author || 'someone')}, stumped ${r.deadliest.stumped} of ${r.deadliest.people}.`);
+  }
+  sec.hidden = !lines.length;
+  $('last').innerHTML = lines.map(l => `<div class="sub">${l}</div>`).join('');
 }
 function renderDaily() {
   const d = DAILY(), sec = $('daily-section');

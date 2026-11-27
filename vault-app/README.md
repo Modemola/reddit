@@ -20,6 +20,8 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 
 **The Daily Vault:** one official vault every night, the same for everyone. It's generated from that night's parts, proven crackable by the solver, and ranked on a leaderboard (fewest moves; ties go to whoever was first). Sharing a run posts a spoiler-free line such as `VAULT Daily #12: cracked in 14 (perfect 12) 🟥🟥🟩`. It leads the home screen and the post's feed card, and returning players land straight in it until they've cracked it.
 
+**The morning after:** each nightly post opens with a recap comment from the app (vaults built, thieves caught, the deadliest vault, the fastest Daily Vault crack), and the home screen starts with a personal *Last night* card: what your vault did and where you placed on the Daily Vault.
+
 **Training heist:** six jobs, each with a one-line brief and teaching one trick, ending in The Core. Job 1 hands new players on to the Daily Vault; the rest of the training stays one tap away.
 
 **Building**

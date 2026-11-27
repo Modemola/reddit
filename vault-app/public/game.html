@@ -948,6 +948,14 @@
         box-shadow: 0 0 0 2px #5ef0d6aa;
       }
     }
+    /* last night, in a few lines */
+    .card.last {
+      display: grid;
+      gap: 6px;
+    }
+    .card.last .sub b {
+      color: var(--text);
+    }
     /* the Daily Vault card */
     .card.daily {
       box-shadow:
@@ -1153,6 +1161,10 @@
 
       <!-- HOME -->
       <main id="v-home" class="app" style="gap:16px">
+        <section class="section" id="last-section" hidden>
+          <h2>Last night</h2>
+          <div class="card last" id="last"></div>
+        </section>
         <section class="section" id="daily-section" hidden>
           <h2 id="daily-h">Daily Vault</h2>
           <div class="card daily" id="daily"></div>
