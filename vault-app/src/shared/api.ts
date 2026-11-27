@@ -29,6 +29,44 @@ export type PlayerVault = {
   stats: VaultStats
 }
 
+/** The night's Daily Vault: one official vault everyone plays, with its leaderboard. */
+export type DailyInfo = {
+  key: string
+  night: number
+  name: string
+  level: Level
+  best: number
+  stats: VaultStats
+  /** fastest cracks first (ties: whoever got there first) */
+  leaders: {name: string; moves: number}[]
+  /** this player's place on the board, if they've cracked it */
+  me: {place: number; moves: number; of: number} | null
+}
+
+/** Last night, in a few numbers (the recap comment and the home screen's 'Last night' card). */
+export type LastNight = {
+  night: number
+  built: number
+  caught: number
+  deadliest: {
+    name: string
+    author: string
+    stumped: number
+    people: number
+  } | null
+  daily: {
+    name: string
+    best: number
+    cracked: number
+    people: number
+    fastest: {name: string; moves: number} | null
+  }
+  /** this player's own vault last night */
+  mine: {name: string; caught: number; cracked: number; people: number} | null
+  /** this player's place on last night's Daily Vault */
+  place: {place: number; of: number; moves: number} | null
+}
+
 export type InitRsp = {
   night: number
   username: string | null
@@ -45,6 +83,10 @@ export type InitRsp = {
   removed?: boolean
   /** The server's clock (ms), so a device whose clock is off still knows when the night changes. */
   now?: number
+  /** How last night went, for this player: their vault, their Daily Vault place, the deadliest vault. */
+  lastNight?: LastNight
+  /** Tonight's Daily Vault (absent from older servers). */
+  daily?: DailyInfo
   /** Tonight's real totals, not limited to the vaults listed. */
   tonight?: {built: number; caught: number}
 }

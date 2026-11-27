@@ -14,6 +14,7 @@ import {
   EndpointMethod,
   type ErrorRsp,
   type InitRsp,
+  type LastNight,
   type PlayerVault,
   type PublishReq,
   type PublishRsp,
@@ -26,6 +27,8 @@ import {type Level, type Move, parse, replay} from '../shared/engine.ts'
 import {
   bestMoves,
   checkPlayerLevel,
+  dailyKey,
+  dailyNight,
   HOUSE,
   houseKey,
   nightOf,
@@ -37,11 +40,13 @@ import {
 import {
   claimShare,
   extendStreak,
+  getDaily,
   getProgress,
   getStats,
   getStreak,
   getVault,
   isRemoved,
+  leaders,
   nightOwners,
   nightTotals,
   rankCrack,
@@ -188,19 +193,36 @@ async function playerVaults(
 async function routeInit(): Promise<InitRsp> {
   const night = tonight()
   const userId = context.userId ?? null
-  const [username, progress, house, vaults, streak, isMod, removed, totals] =
-    await Promise.all([
-      reddit.getCurrentUsername().catch(() => undefined),
-      userId ? getProgress(userId) : Promise.resolve({}),
-      Promise.all(HOUSE.map((_, i) => getStats(houseKey(i)))),
-      playerVaults(night, userId),
-      userId
-        ? getStreak(userId, night)
-        : Promise.resolve({count: 0, best: 0, tonight: false}),
-      isModerator(),
-      userId ? isRemoved(playerKey(userId, night)) : Promise.resolve(false),
-      nightTotals(night),
-    ])
+  const dk = dailyKey(night)
+  const [
+    username,
+    progress,
+    house,
+    vaults,
+    streak,
+    isMod,
+    removed,
+    totals,
+    daily,
+    dailyStats,
+    board,
+    lastNight,
+  ] = await Promise.all([
+    reddit.getCurrentUsername().catch(() => undefined),
+    userId ? getProgress(userId) : Promise.resolve({}),
+    Promise.all(HOUSE.map((_, i) => getStats(houseKey(i)))),
+    playerVaults(night, userId),
+    userId
+      ? getStreak(userId, night)
+      : Promise.resolve({count: 0, best: 0, tonight: false}),
+    isModerator(),
+    userId ? isRemoved(playerKey(userId, night)) : Promise.resolve(false),
+    nightTotals(night),
+    getDaily(night),
+    getStats(dk),
+    leaders(dk, userId),
+    night > 0 ? recapFor(night - 1, userId) : Promise.resolve(null),
+  ])
   const mine = vaults.find(v => v.owner === userId) ?? null
   const houseStats: InitRsp['house'] = {}
   house.forEach((s, i) => {
@@ -219,6 +241,16 @@ async function routeInit(): Promise<InitRsp> {
     isMod,
     removed: !mine && removed,
     tonight: totals,
+    ...(lastNight ? {lastNight} : {}),
+    daily: {
+      key: dk,
+      night,
+      name: daily.level.name,
+      level: daily.level,
+      best: daily.best,
+      stats: dailyStats,
+      ...board,
+    },
     now: Date.now(),
   }
 }
@@ -239,6 +271,11 @@ const isMove = (m: unknown): m is Move =>
 async function levelFor(
   key: string,
 ): Promise<{level: Level; owner: string | null} | null> {
+  const d = dailyNight(key)
+  if (d !== null) {
+    if (d > tonight()) return null
+    return {level: (await getDaily(d)).level, owner: null}
+  }
   const h = /^h([1-9])$/.exec(key)
   if (h) {
     const level = HOUSE[Number(h[1]) - 1]
@@ -293,7 +330,14 @@ async function routeAttempt(
       : await getStreak(userId, tonight())
   const rank =
     result === 'won' && !ownVault
-      ? await rankCrack(userId, req.key, used)
+      ? await rankCrack(
+          userId,
+          req.key,
+          used,
+          dailyNight(req.key) !== null
+            ? await reddit.getCurrentUsername().catch(() => undefined)
+            : undefined,
+        )
       : undefined
   return {
     result,
@@ -392,7 +436,19 @@ async function routeShare(
     state.status === 'won'
       ? `cracked ${found.level.name} in ${used} moves${used <= best ? ' (a perfect run)' : ` (best possible ${best})`}`
       : `got caught ${state.cause === 'laser' ? 'by a laser' : state.cause === 'camera' ? 'on camera' : 'by a guard'} in ${found.level.name} on move ${used}`
-  const text = `VAULT, Night ${night}: I ${verb}.`
+  const dn = dailyNight(req.key)
+  let text = `VAULT, Night ${night}: I ${verb}.`
+  if (dn !== null) {
+    // spoiler-free: one red square per bust before this, then this run's square
+    const tries = (await getProgress(userId))[req.key]?.tries ?? 1
+    const squares =
+      '🟥'.repeat(Math.min(9, Math.max(0, tries - 1))) +
+      (state.status === 'won' ? '🟩' : '🟥')
+    text =
+      state.status === 'won'
+        ? `VAULT Daily #${dn + 1}: cracked in ${used} (perfect ${best}) ${squares}`
+        : `VAULT Daily #${dn + 1}: busted on move ${used} ${squares}`
+  }
 
   try {
     let gifUrl: string | null = null
@@ -445,11 +501,94 @@ async function routeShare(
 async function createNightPost() {
   const night = tonight()
   const theme = themeFor(night)
-  return reddit.submitCustomPost({
+  const post = await reddit.submitCustomPost({
     title: theme
       ? `VAULT, Night ${night + 1}: it’s ${theme.name}. Crack tonight’s vaults, then build one that catches everyone`
       : `VAULT, Night ${night + 1}: crack tonight’s vaults, then build one that catches everyone`,
   })
+  // the morning-after recap: how last night went, as the new post's first comment
+  try {
+    const r = night > 0 ? await recapFor(night - 1, null) : null
+    if (r && (r.built || r.caught || r.daily.people)) {
+      let rt = new RichTextBuilder()
+      for (const line of recapLines(r))
+        rt = rt.paragraph(p => p.text({text: line}))
+      await reddit.submitComment({id: post.id, richtext: rt, runAs: 'APP'})
+    }
+  } catch (err) {
+    // the post matters more than its recap
+    console.error(`recap failed; ${err}`)
+  }
+  return post
+}
+
+/** Last night in numbers; with a userId, also that player's own vault and Daily Vault place. */
+async function recapFor(
+  night: number,
+  userId: string | null,
+): Promise<LastNight> {
+  const dk = dailyKey(night)
+  const [top, totals, daily, dailyStats, board, mine] = await Promise.all([
+    redis.zRange(`night:${night}:deadly`, 0, 0, {by: 'rank', reverse: true}),
+    nightTotals(night),
+    getDaily(night),
+    getStats(dk),
+    leaders(dk, userId, 1),
+    userId ? getVault(playerKey(userId, night)) : Promise.resolve(null),
+  ])
+  const owner = top[0]?.member
+  const dv = owner ? await getVault(playerKey(owner, night)) : null
+  const ds = dv ? await getStats(dv.key) : null
+  const ms = mine ? await getStats(mine.key) : null
+  return {
+    night,
+    built: totals.built,
+    caught: totals.caught,
+    deadliest:
+      dv && ds && ds.people - ds.cracked > 0
+        ? {
+            name: dv.name,
+            author: dv.author,
+            stumped: ds.people - ds.cracked,
+            people: ds.people,
+          }
+        : null,
+    daily: {
+      name: daily.level.name,
+      best: daily.best,
+      cracked: dailyStats.cracked,
+      people: dailyStats.people,
+      fastest: board.leaders[0] ?? null,
+    },
+    mine:
+      mine && ms
+        ? {
+            name: mine.name,
+            caught: ms.caught,
+            cracked: ms.cracked,
+            people: ms.people,
+          }
+        : null,
+    place: board.me,
+  }
+}
+
+function recapLines(r: LastNight): string[] {
+  const lines = [
+    `Last night (Night ${r.night + 1}): ${r.built} ${r.built === 1 ? 'vault' : 'vaults'} built, ${r.caught} ${r.caught === 1 ? 'thief' : 'thieves'} caught.`,
+  ]
+  if (r.deadliest)
+    lines.push(
+      `Deadliest: ${r.deadliest.name} by u/${r.deadliest.author || 'someone'}, stumped ${r.deadliest.stumped} of ${r.deadliest.people}.`,
+    )
+  if (r.daily.people)
+    lines.push(
+      `${r.daily.name}: cracked by ${r.daily.cracked} of ${r.daily.people}` +
+        (r.daily.fastest
+          ? `; fastest u/${r.daily.fastest.name} in ${r.daily.fastest.moves} moves (perfect ${r.daily.best}).`
+          : '.'),
+    )
+  return lines
 }
 
 async function routeMenuNewPost(): Promise<UiResponse> {

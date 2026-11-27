@@ -20,6 +20,7 @@ import {
 } from '../shared/api.ts'
 import {type Level, type Move, parse, replay, solve} from '../shared/engine.ts'
 import {
+  dailyKey,
   deadliness,
   HOUSE,
   nightOf,
@@ -114,7 +115,7 @@ before(async () => {
   reddit.submitCustomPost = (async (opts: {title: string}) => {
     if (failPost) throw Error('rate limited')
     posts.push(opts.title)
-    return {url: 'https://reddit.com/r/vaulttest/comments/2/'}
+    return {id: 't3_new', url: 'https://reddit.com/r/vaulttest/comments/2/'}
   }) as unknown as typeof reddit.submitCustomPost
   server = createServer(async (req, rsp) => {
     const user = String(req.headers['x-test-user'] ?? 't2_alice')
@@ -270,6 +271,112 @@ test('a failed nightly post can be retried', async () => {
   assert.equal(first.status, 500)
   await post(Endpoint.OnNewNight, {})
   assert.equal(posts.length, 1)
+})
+
+test('the Daily Vault: in init, ranked by name on a leaderboard, never served early, shared without spoilers', async () => {
+  const night = nightOf(Date.now())
+  const init = await get<InitRsp>(Endpoint.Init, 't2_d1')
+  const daily = init.daily!
+  assert.equal(daily.key, dailyKey(night))
+  const sol = solve(parse(daily.level))!
+  assert.equal(daily.best, sol.length)
+  assert.deepEqual(daily.leaders, [])
+  // a slow crack (the perfect route with one wait slipped in where it's still safe), then a perfect one
+  const V = parse(daily.level)
+  let slow: Move[] = []
+  for (let i = 0; i <= sol.length && !slow.length; i++) {
+    const m = [...sol.slice(0, i), 'W' as Move, ...sol.slice(i)]
+    if (replay(V, m).state.status === 'won') slow = m
+  }
+  assert.equal(slow.length, sol.length + 1, 'a crack one move slower exists')
+  await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: daily.key, moves: slow},
+    't2_d1',
+  )
+  await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: daily.key, moves: sol},
+    't2_d2',
+  )
+  const after = (await get<InitRsp>(Endpoint.Init, 't2_d1')).daily!
+  assert.deepEqual(
+    after.leaders.map(l => l.moves),
+    [sol.length, sol.length + 1],
+  )
+  assert.equal(after.leaders[0]?.name, 'tester')
+  assert.deepEqual(after.me, {place: 2, moves: sol.length + 1, of: 2})
+  assert.equal(after.stats.cracked, 2)
+  // tomorrow's vault can't be fetched early
+  const early = await post<ErrorRsp>(Endpoint.Attempt, {
+    key: dailyKey(night + 1),
+    moves: sol,
+  })
+  assert.equal(early.status, 404)
+  // sharing the perfect crack: the line gives the count, not the route
+  const shared = await post<ShareRsp>(
+    Endpoint.Share,
+    {key: daily.key, moves: sol},
+    't2_d2',
+  )
+  assert.equal(shared.status, 200)
+  const line = String(comments.at(-1)?.richtext)
+  assert.ok(
+    line.includes(
+      `VAULT Daily #${night + 1}: cracked in ${sol.length} (perfect ${sol.length}) 🟩`,
+    ),
+    line,
+  )
+})
+
+test('the morning-after recap: a comment on the new post, and each player’s own last night', async () => {
+  const n = nightOf(Date.now()) - 1
+  const key = playerKey('t2_old', n)
+  // last night: one vault that stumped 3 of 4, seven busts in all, two cracks of the Daily Vault
+  for (const [f, v] of Object.entries({
+    owner: 't2_old',
+    author: 'old_builder',
+    name: 'Old Box',
+    level: JSON.stringify(vault()),
+    best: '12',
+  }))
+    h(`vault:${key}`).set(f, v)
+  zsets.set(`night:${n}:vaults`, new Map([['t2_old', 1]]))
+  zsets.set(`night:${n}:deadly`, new Map([['t2_old', 3]]))
+  for (const [f, v] of Object.entries({tries: '6', caught: '5', cracked: '1'}))
+    h(`stats:${key}`).set(f, v)
+  for (const u of ['a', 'b', 'c', 'd']) h(`people:${key}`).set(`t2_${u}`, '1')
+  h(`nightstats:${n}`).set('caught', '7')
+  const dk = dailyKey(n)
+  h(`best:${dk}`).set('t2_a', '13').set('t2_b', '15')
+  h(`bestAt:${dk}`).set('t2_a', '1').set('t2_b', '2')
+  h(`names:${dk}`).set('t2_a', 'alpha').set('t2_b', 'beta')
+  for (const [f, v] of Object.entries({tries: '4', caught: '1', cracked: '2'}))
+    h(`stats:${dk}`).set(f, v)
+  for (const u of ['a', 'b', 'c']) h(`people:${dk}`).set(`t2_${u}`, '1')
+
+  comments.length = 0
+  await post(Endpoint.OnNewNight, {})
+  const recap = String(comments.at(-1)?.richtext)
+  assert.equal(comments.at(-1)?.runAs, 'APP')
+  assert.equal(comments.at(-1)?.id, 't3_new')
+  for (const part of [
+    `Last night (Night ${n + 1}): 1 vault built, 7 thieves caught.`,
+    'Deadliest: Old Box by u/old_builder, stumped 3 of 4.',
+    `Daily Vault #${n + 1}: cracked by 2 of 3; fastest u/alpha in 13 moves`,
+  ])
+    assert.ok(recap.includes(part), `${part}\n${recap}`)
+
+  const old = (await get<InitRsp>(Endpoint.Init, 't2_old')).lastNight!
+  assert.deepEqual(old.mine, {
+    name: 'Old Box',
+    caught: 5,
+    cracked: 1,
+    people: 4,
+  })
+  const beta = (await get<InitRsp>(Endpoint.Init, 't2_b')).lastNight!
+  assert.deepEqual(beta.place, {place: 2, of: 2, moves: 15})
+  assert.equal(beta.mine, null)
 })
 
 // A crackable test vault built from whatever tonight's parts are, so the tests pass on any date.

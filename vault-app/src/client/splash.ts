@@ -1,10 +1,81 @@
 import {requestExpandedMode} from '@devvit/web/client'
 import {Endpoint, type InitRsp, type PlayerVault} from '../shared/api.ts'
-import {deadliness, nightOf, themeFor} from '../shared/vault.ts'
+import type {Level} from '../shared/engine.ts'
+import {
+  bestMoves,
+  dailyVault,
+  deadliness,
+  nightOf,
+  themeFor,
+} from '../shared/vault.ts'
 
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement
 const nightEl = document.getElementById('night') as HTMLElement
 const statsEl = document.getElementById('stats') as HTMLElement
+const dailyEl = document.getElementById('daily') as HTMLElement
+
+/** A tiny map of a vault for the card: walls, floor, the gem, guard routes, laser beams, cameras. */
+function miniMap(level: Level): void {
+  const c = document.getElementById('dmap') as HTMLCanvasElement | null
+  const x = c?.getContext('2d')
+  if (!c || !x) return
+  const t = 5
+  const dpr = Math.min(devicePixelRatio || 1, 2)
+  c.width = 7 * t * dpr
+  c.height = 9 * t * dpr
+  x.scale(dpr, dpr)
+  level.map.forEach((row, y) => {
+    for (let i = 0; i < row.length; i++) {
+      const ch = row[i]
+      x.fillStyle = ch === '#' ? '#5a2f26' : (i + y) % 2 ? '#7d5f42' : '#8a6a4a'
+      x.fillRect(i * t, y * t, t, t)
+      if (ch === 'G') {
+        x.fillStyle = '#5ef0d6'
+        x.fillRect(i * t + 1, y * t + 1, t - 2, t - 2)
+      }
+    }
+  })
+  const dirs: Record<string, [number, number]> = {
+    U: [0, -1],
+    D: [0, 1],
+    L: [-1, 0],
+    R: [1, 0],
+  }
+  x.fillStyle = '#ff4d5e'
+  for (const l of level.lasers ?? []) {
+    const [dx, dy] = dirs[l.dir] ?? [0, 0]
+    let [px, py] = [l.at[0] + dx, l.at[1] + dy]
+    while (level.map[py]?.[px] && level.map[py]?.[px] !== '#') {
+      x.fillRect(px * t, py * t + t / 2 - 0.5, t, 1)
+      px += dx
+      py += dy
+    }
+  }
+  x.fillStyle = '#ffb547'
+  for (const g of level.guards ?? [])
+    for (const [px, py] of g.path)
+      x.fillRect(px * t + 1.5, py * t + 1.5, t - 3, t - 3)
+  x.fillStyle = '#8fb3ff'
+  for (const cam of level.cams ?? [])
+    x.fillRect(cam.at[0] * t + 1, cam.at[1] * t + 1, t - 2, t - 2)
+}
+function showDaily(
+  night: number,
+  level: Level,
+  best: number,
+  stats: {people: number; cracked: number} | null,
+  cracked: boolean,
+): void {
+  miniMap(level)
+  ;(document.getElementById('dname') as HTMLElement).textContent =
+    `Daily Vault #${night + 1}`
+  ;(document.getElementById('dsub') as HTMLElement).textContent = stats?.people
+    ? `stumped ${stats.people - stats.cracked} of ${stats.people} · perfect ${best}`
+    : `same for everyone · perfect ${best}`
+  dailyEl.hidden = false
+  document.body.classList.add('has-daily')
+  if (!cracked) startBtn.textContent = 'Crack today’s vault'
+}
 
 // The web preview (the Vercel build defines VAULT_PREVIEW) has no Reddit around it and no game server.
 declare const VAULT_PREVIEW: boolean | undefined
@@ -25,6 +96,14 @@ async function loadStats(): Promise<void> {
     const init: InitRsp = await rsp.json()
     const theme = themeFor(init.night)
     nightEl.textContent = `Night ${init.night + 1}${theme ? ` · ${theme.name}` : ''}`
+    if (init.daily)
+      showDaily(
+        init.daily.night,
+        init.daily.level,
+        init.daily.best,
+        init.daily.stats,
+        !!init.progress[init.daily.key]?.won,
+      )
     // tonight's real totals from the server (older servers: fall back to summing the listed vaults)
     const built =
       init.tonight?.built ?? init.others.length + (init.mine ? 1 : 0)
@@ -53,15 +132,23 @@ async function loadStats(): Promise<void> {
     if (top) {
       const line = document.createElement('div')
       line.className = 'votn'
-      line.textContent = `Vault of the night: ${top.name} by u/${top.author || 'someone'}, stumped ${top.stats.people - top.stats.cracked} of ${top.stats.people}`
+      line.textContent = `Deadliest tonight: ${top.name} by u/${top.author || 'someone'}, stumped ${top.stats.people - top.stats.cracked} of ${top.stats.people}`
       statsEl.after(line)
     }
   } catch {
     // the splash works without numbers
   }
 }
-if (PREVIEW) statsEl.textContent = 'Web preview · the full game lives on Reddit'
-else void loadStats()
+if (PREVIEW) {
+  statsEl.textContent = 'Web preview · the full game lives on Reddit'
+  // the preview builds the same Daily Vault here, once the card is up
+  const idle = window.requestIdleCallback ?? (f => setTimeout(f, 300))
+  idle(() => {
+    const night = nightOf(Date.now())
+    const level = dailyVault(night)
+    showDaily(night, level, bestMoves(level), null, false)
+  })
+} else void loadStats()
 
 // A guard with a torch patrols along the bottom of the card while the light sweeps.
 // Small, drawn in code, paused when the card is off screen, still for reduced motion.
