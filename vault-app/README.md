@@ -2,7 +2,7 @@
 
 **Crack tonight’s vaults. Then build one that catches everyone else.**
 
-![Getting caught in The Lobby, cracking it on the next try, and the home screen with Vault of the night](../docs/media/screens.png)
+![Getting caught in The Lobby, cracking it on the next try, and the home screen](../docs/media/screens.png)
 
 VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every night the subreddit gets a new post. You sneak through vaults one tile at a time, past patrolling guards, pulsing lasers and turning cameras, to reach the gem. Then you build your own vault from the same box of parts everyone else got tonight, and the rest of the subreddit tries to crack it.
 
@@ -18,7 +18,9 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 - Every vault shows the best possible number of moves. Beat it, or match it for a perfect run.
 - Once you’ve cracked a vault, your best run replays as a teal ghost that moves when you move, so you can race your own record.
 
-**Training heist:** six house vaults, each teaching one trick, ending in The Core.
+**The Daily Vault:** one official vault every night, the same for everyone. It's generated from that night's parts, proven crackable by the solver, and ranked on a leaderboard (fewest moves; ties go to whoever was first). Sharing a run posts a spoiler-free line such as `VAULT Daily #12: cracked in 14 (perfect 12) 🟥🟥🟩`. It leads the home screen and the post's feed card, and returning players land straight in it until they've cracked it.
+
+**Training heist:** six jobs, each with a one-line brief and teaching one trick, ending in The Core. Job 1 hands new players on to the Daily Vault; the rest of the training stays one tap away.
 
 **Building**
 
@@ -34,7 +36,7 @@ VAULT is a daily stealth puzzle game for Reddit, built on Devvit Web. Every nigh
 - The community makes the daily content: every player’s vault is a puzzle for everyone else.
 - Red marks on the floor show where other people were caught.
 - After a crack you see how you did against everyone else who cracked it (“Fewer moves than 70% of the 12 other thieves…”).
-- **Vault of the night**: the deadliest player vault (most thieves caught, every crack counting against it) is featured on the home screen and the feed card.
+- **Deadliest tonight**: the deadliest player vault (most thieves caught, every crack counting against it) is featured on the home screen and the feed card.
 - Deadliest vaults rise to the top of tonight’s list.
 - A new post goes up every night automatically.
 - Night streaks: crack at least one vault every night to keep yours going (your own vault doesn’t count).

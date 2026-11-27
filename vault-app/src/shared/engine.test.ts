@@ -4,6 +4,9 @@ import {guardPos, parse, replay, solve, startState, step} from './engine.ts'
 import {
   bestMoves,
   checkPlayerLevel,
+  dailyKey,
+  dailyNight,
+  dailyVault,
   HOUSE,
   partsFor,
   themeFor,
@@ -192,4 +195,17 @@ test('themed nights: twice a week, each with a buildable parts box', () => {
     assert.ok(p.guard + p.laser + p.cam >= 2, `night ${n}`)
     assert.ok(p.wall >= 6, `night ${n}`)
   }
+})
+
+test('the Daily Vault: the same vault for a night everywhere, valid, crackable, and a fair size', () => {
+  for (let night = 0; night < 10; night++) {
+    const a = dailyVault(night)
+    assert.deepEqual(dailyVault(night), a)
+    assert.equal(checkPlayerLevel(a, partsFor(night)), null)
+    const best = bestMoves(a)
+    assert.ok(best >= 8 && best <= 24, `night ${night}: best ${best}`)
+  }
+  assert.notDeepEqual(dailyVault(1).map, dailyVault(2).map)
+  assert.equal(dailyNight(dailyKey(41)), 41)
+  assert.equal(dailyNight('h1'), null)
 })

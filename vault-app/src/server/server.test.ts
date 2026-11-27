@@ -20,6 +20,7 @@ import {
 } from '../shared/api.ts'
 import {type Level, type Move, parse, replay, solve} from '../shared/engine.ts'
 import {
+  dailyKey,
   deadliness,
   HOUSE,
   nightOf,
@@ -270,6 +271,62 @@ test('a failed nightly post can be retried', async () => {
   assert.equal(first.status, 500)
   await post(Endpoint.OnNewNight, {})
   assert.equal(posts.length, 1)
+})
+
+test('the Daily Vault: in init, ranked by name on a leaderboard, never served early, shared without spoilers', async () => {
+  const night = nightOf(Date.now())
+  const init = await get<InitRsp>(Endpoint.Init, 't2_d1')
+  const daily = init.daily!
+  assert.equal(daily.key, dailyKey(night))
+  const sol = solve(parse(daily.level))!
+  assert.equal(daily.best, sol.length)
+  assert.deepEqual(daily.leaders, [])
+  // a slow crack (the perfect route with one wait slipped in where it's still safe), then a perfect one
+  const V = parse(daily.level)
+  let slow: Move[] = []
+  for (let i = 0; i <= sol.length && !slow.length; i++) {
+    const m = [...sol.slice(0, i), 'W' as Move, ...sol.slice(i)]
+    if (replay(V, m).state.status === 'won') slow = m
+  }
+  assert.equal(slow.length, sol.length + 1, 'a crack one move slower exists')
+  await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: daily.key, moves: slow},
+    't2_d1',
+  )
+  await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: daily.key, moves: sol},
+    't2_d2',
+  )
+  const after = (await get<InitRsp>(Endpoint.Init, 't2_d1')).daily!
+  assert.deepEqual(
+    after.leaders.map(l => l.moves),
+    [sol.length, sol.length + 1],
+  )
+  assert.equal(after.leaders[0]?.name, 'tester')
+  assert.deepEqual(after.me, {place: 2, moves: sol.length + 1, of: 2})
+  assert.equal(after.stats.cracked, 2)
+  // tomorrow's vault can't be fetched early
+  const early = await post<ErrorRsp>(Endpoint.Attempt, {
+    key: dailyKey(night + 1),
+    moves: sol,
+  })
+  assert.equal(early.status, 404)
+  // sharing the perfect crack: the line gives the count, not the route
+  const shared = await post<ShareRsp>(
+    Endpoint.Share,
+    {key: daily.key, moves: sol},
+    't2_d2',
+  )
+  assert.equal(shared.status, 200)
+  const line = String(comments.at(-1)?.richtext)
+  assert.ok(
+    line.includes(
+      `VAULT Daily #${night + 1}: cracked in ${sol.length} (perfect ${sol.length}) 🟩`,
+    ),
+    line,
+  )
 })
 
 // A crackable test vault built from whatever tonight's parts are, so the tests pass on any date.

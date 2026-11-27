@@ -17,7 +17,7 @@ import type {
   VaultStats,
 } from '../shared/api.ts'
 import type {Level} from '../shared/engine.ts'
-import {deadliness, nightOf} from '../shared/vault.ts'
+import {bestMoves, dailyVault, deadliness, nightOf} from '../shared/vault.ts'
 
 export async function getStats(key: string): Promise<VaultStats> {
   const [s, people, marks] = await Promise.all([
@@ -247,14 +247,66 @@ export async function rankCrack(
   userId: string,
   key: string,
   moves: number,
+  name?: string,
 ): Promise<Rank> {
   const all = await redis.hGetAll(`best:${key}`)
   const mine = Number(all[userId] ?? Number.POSITIVE_INFINITY)
-  if (moves < mine) await redis.hSet(`best:${key}`, {[userId]: String(moves)})
+  if (moves < mine) {
+    await redis.hSet(`best:${key}`, {[userId]: String(moves)})
+    // when they got there, so ties on the leaderboard go to whoever was first
+    await redis.hSet(`bestAt:${key}`, {[userId]: String(Date.now())})
+  }
+  if (name) await redis.hSet(`names:${key}`, {[userId]: name})
   const others = Object.entries(all)
     .filter(([u]) => u !== userId)
     .map(([, v]) => Number(v))
   return {others: others.length, slower: others.filter(v => v > moves).length}
+}
+
+/** A night's Daily Vault, generated once and kept, so it never changes even if the generator does. */
+export async function getDaily(
+  night: number,
+): Promise<{level: Level; best: number}> {
+  const cached = await redis.get(`daily:${night}`)
+  if (cached)
+    try {
+      return JSON.parse(cached)
+    } catch {
+      // regenerate below
+    }
+  const level = dailyVault(night)
+  const out = {level, best: bestMoves(level)}
+  await redis.set(`daily:${night}`, JSON.stringify(out))
+  return out
+}
+
+/** The fastest cracks of a vault (ties: whoever got there first), and where this player stands. */
+export async function leaders(
+  key: string,
+  userId: string | null,
+  top = 5,
+): Promise<{
+  leaders: {name: string; moves: number}[]
+  me: {place: number; moves: number; of: number} | null
+}> {
+  const [best, at, names] = await Promise.all([
+    redis.hGetAll(`best:${key}`),
+    redis.hGetAll(`bestAt:${key}`),
+    redis.hGetAll(`names:${key}`),
+  ])
+  const rows = Object.entries(best)
+    .map(([u, m]) => ({u, moves: Number(m), at: Number(at[u] ?? 0)}))
+    .sort((a, b) => a.moves - b.moves || a.at - b.at)
+  const i = userId ? rows.findIndex(r => r.u === userId) : -1
+  return {
+    leaders: rows
+      .slice(0, top)
+      .map(r => ({name: names[r.u] ?? 'a thief', moves: r.moves})),
+    me:
+      i >= 0
+        ? {place: i + 1, moves: rows[i]?.moves ?? 0, of: rows.length}
+        : null,
+  }
 }
 
 /** Takes a player vault off its night's list and stops it being played. */

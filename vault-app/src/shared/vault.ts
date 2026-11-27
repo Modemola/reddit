@@ -399,3 +399,130 @@ export function deadliness(s: {people: number; cracked: number}): number {
   const stumped = s.people - s.cracked
   return stumped - 2 * s.cracked
 }
+
+// ---------- the Daily Vault ----------
+
+/** The key of a night's Daily Vault, the one official vault everyone plays that night. */
+export const dailyKey = (night: number) => `d${night}`
+export const dailyNight = (key: string): number | null => {
+  const m = /^d(\d+)$/.exec(key)
+  return m ? Number(m[1]) : null
+}
+
+/** A small seeded random generator, so a night always produces the same Daily Vault everywhere. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * A night's Daily Vault: built from that night's parts, proven crackable by the solver, checked like a
+ * player vault, and chosen for interest (every part used, a perfect run of 11 to 18 moves where possible).
+ * Deterministic: the same night gives the same vault on the server and in the web preview.
+ */
+export function dailyVault(night: number): Level {
+  const parts = partsFor(night)
+  const rand = seeded(night * 2654435761 + 97)
+  const rnd = (n: number) => Math.floor(rand() * n)
+  let best: Level | null = null
+  let bestScore = -1e9
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const gem: XY = [1 + rnd(5), 1 + rnd(3)]
+    const walls: XY[] = []
+    const guards: NonNullable<Level['guards']> = []
+    const cams: NonNullable<Level['cams']> = []
+    const lasers: NonNullable<Level['lasers']> = []
+    const used = (x: number, y: number) =>
+      (x === gem[0] && y === gem[1]) ||
+      walls.some(w => w[0] === x && w[1] === y) ||
+      guards.some(g => g.path.some(p => p[0] === x && p[1] === y)) ||
+      cams.some(c => c.at[0] === x && c.at[1] === y)
+    const free = (x: number, y: number) =>
+      x > 0 &&
+      y > 0 &&
+      x < W - 1 &&
+      y < H - 1 &&
+      !(x === START[0] && y >= H - 2) &&
+      !used(x, y)
+    for (let i = 0; i < parts.wall; i++) {
+      const x = 1 + rnd(5)
+      const y = 2 + rnd(5)
+      if (free(x, y)) walls.push([x, y])
+    }
+    for (let i = 0; i < parts.guard; i++) {
+      const horiz = rand() < 0.6
+      const len = 2 + rnd(4)
+      let x = 1 + rnd(5)
+      let y = 1 + rnd(6)
+      const path: XY[] = []
+      for (let k = 0; k < len && free(x, y); k++) {
+        path.push([x, y])
+        if (horiz) x++
+        else y++
+      }
+      if (path.length)
+        guards.push({
+          path,
+          see: rand() < 0.3 ? 3 : 2,
+          face: (['U', 'R', 'D', 'L'] as Dir[])[rnd(4)],
+        })
+    }
+    for (let i = 0; i < parts.cam; i++) {
+      const x = 1 + rnd(5)
+      const y = 1 + rnd(6)
+      if (free(x, y))
+        cams.push({at: [x, y], dirs: SWEEPS[rnd(SWEEPS.length)] ?? ['U', 'D']})
+    }
+    for (let i = 0; i < parts.laser; i++) {
+      const left = rand() < 0.5
+      const y = 1 + rnd(7)
+      if (lasers.some(l => l.at[1] === y)) continue
+      const [on, off] = RHYTHMS[rnd(RHYTHMS.length)] ?? [2, 2]
+      lasers.push({at: [left ? 0 : W - 1, y], dir: left ? 'R' : 'L', on, off})
+    }
+    const map: string[] = []
+    for (let y = 0; y < H; y++) {
+      let row = ''
+      for (let x = 0; x < W; x++) {
+        const border = x === 0 || y === 0 || x === W - 1 || y === H - 1
+        let c = border ? '#' : '.'
+        if (x === START[0] && y === START[1]) c = 'S'
+        if (walls.some(w => w[0] === x && w[1] === y)) c = '#'
+        if (x === gem[0] && y === gem[1]) c = 'G'
+        row += c
+      }
+      map.push(row)
+    }
+    const level: Level = {
+      name: `Daily Vault #${night + 1}`,
+      map,
+      guards,
+      lasers,
+      cams,
+    }
+    if (checkPlayerLevel(level, parts)) continue
+    const sol = solve(parse(level))
+    if (!sol) continue
+    const straight = Math.abs(START[0] - gem[0]) + Math.abs(START[1] - gem[1])
+    const used2 = guards.length + cams.length + lasers.length
+    const n = sol.length
+    // interest: detours forced by the parts, every part in play, and a perfect run of 11 to 18 moves
+    const score =
+      Math.min(n - straight, 10) +
+      2 * used2 -
+      (n < 11 ? (11 - n) * 2 : 0) -
+      (n > 18 ? (n - 18) * 2 : 0)
+    if (score > bestScore) {
+      best = level
+      bestScore = score
+    }
+  }
+  // (a vault is always found in practice; the fallback is the first training vault, renamed)
+  return best ?? {...(HOUSE[0] as Level), name: `Daily Vault #${night + 1}`}
+}

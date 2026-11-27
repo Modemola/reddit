@@ -26,6 +26,8 @@ import {type Level, type Move, parse, replay} from '../shared/engine.ts'
 import {
   bestMoves,
   checkPlayerLevel,
+  dailyKey,
+  dailyNight,
   HOUSE,
   houseKey,
   nightOf,
@@ -37,11 +39,13 @@ import {
 import {
   claimShare,
   extendStreak,
+  getDaily,
   getProgress,
   getStats,
   getStreak,
   getVault,
   isRemoved,
+  leaders,
   nightOwners,
   nightTotals,
   rankCrack,
@@ -188,19 +192,34 @@ async function playerVaults(
 async function routeInit(): Promise<InitRsp> {
   const night = tonight()
   const userId = context.userId ?? null
-  const [username, progress, house, vaults, streak, isMod, removed, totals] =
-    await Promise.all([
-      reddit.getCurrentUsername().catch(() => undefined),
-      userId ? getProgress(userId) : Promise.resolve({}),
-      Promise.all(HOUSE.map((_, i) => getStats(houseKey(i)))),
-      playerVaults(night, userId),
-      userId
-        ? getStreak(userId, night)
-        : Promise.resolve({count: 0, best: 0, tonight: false}),
-      isModerator(),
-      userId ? isRemoved(playerKey(userId, night)) : Promise.resolve(false),
-      nightTotals(night),
-    ])
+  const dk = dailyKey(night)
+  const [
+    username,
+    progress,
+    house,
+    vaults,
+    streak,
+    isMod,
+    removed,
+    totals,
+    daily,
+    dailyStats,
+    board,
+  ] = await Promise.all([
+    reddit.getCurrentUsername().catch(() => undefined),
+    userId ? getProgress(userId) : Promise.resolve({}),
+    Promise.all(HOUSE.map((_, i) => getStats(houseKey(i)))),
+    playerVaults(night, userId),
+    userId
+      ? getStreak(userId, night)
+      : Promise.resolve({count: 0, best: 0, tonight: false}),
+    isModerator(),
+    userId ? isRemoved(playerKey(userId, night)) : Promise.resolve(false),
+    nightTotals(night),
+    getDaily(night),
+    getStats(dk),
+    leaders(dk, userId),
+  ])
   const mine = vaults.find(v => v.owner === userId) ?? null
   const houseStats: InitRsp['house'] = {}
   house.forEach((s, i) => {
@@ -219,6 +238,15 @@ async function routeInit(): Promise<InitRsp> {
     isMod,
     removed: !mine && removed,
     tonight: totals,
+    daily: {
+      key: dk,
+      night,
+      name: daily.level.name,
+      level: daily.level,
+      best: daily.best,
+      stats: dailyStats,
+      ...board,
+    },
     now: Date.now(),
   }
 }
@@ -239,6 +267,11 @@ const isMove = (m: unknown): m is Move =>
 async function levelFor(
   key: string,
 ): Promise<{level: Level; owner: string | null} | null> {
+  const d = dailyNight(key)
+  if (d !== null) {
+    if (d > tonight()) return null
+    return {level: (await getDaily(d)).level, owner: null}
+  }
   const h = /^h([1-9])$/.exec(key)
   if (h) {
     const level = HOUSE[Number(h[1]) - 1]
@@ -293,7 +326,14 @@ async function routeAttempt(
       : await getStreak(userId, tonight())
   const rank =
     result === 'won' && !ownVault
-      ? await rankCrack(userId, req.key, used)
+      ? await rankCrack(
+          userId,
+          req.key,
+          used,
+          dailyNight(req.key) !== null
+            ? await reddit.getCurrentUsername().catch(() => undefined)
+            : undefined,
+        )
       : undefined
   return {
     result,
@@ -392,7 +432,19 @@ async function routeShare(
     state.status === 'won'
       ? `cracked ${found.level.name} in ${used} moves${used <= best ? ' (a perfect run)' : ` (best possible ${best})`}`
       : `got caught ${state.cause === 'laser' ? 'by a laser' : state.cause === 'camera' ? 'on camera' : 'by a guard'} in ${found.level.name} on move ${used}`
-  const text = `VAULT, Night ${night}: I ${verb}.`
+  const dn = dailyNight(req.key)
+  let text = `VAULT, Night ${night}: I ${verb}.`
+  if (dn !== null) {
+    // spoiler-free: one red square per bust before this, then this run's square
+    const tries = (await getProgress(userId))[req.key]?.tries ?? 1
+    const squares =
+      '🟥'.repeat(Math.min(9, Math.max(0, tries - 1))) +
+      (state.status === 'won' ? '🟩' : '🟥')
+    text =
+      state.status === 'won'
+        ? `VAULT Daily #${dn + 1}: cracked in ${used} (perfect ${best}) ${squares}`
+        : `VAULT Daily #${dn + 1}: busted on move ${used} ${squares}`
+  }
 
   try {
     let gifUrl: string | null = null

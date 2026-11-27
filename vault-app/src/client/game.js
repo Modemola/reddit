@@ -3,7 +3,7 @@
 import { showToast } from '@devvit/web/client';
 import { Endpoint } from '../shared/api.ts';
 import { advanceGuards, camDir, DIRS, danger, guardPos, HEARING, laserOn, parse, pebbleTargets, ray, solve, startState, step } from '../shared/engine.ts';
-import { deadliness, themeFor, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEEPS, W } from '../shared/vault.ts';
+import { bestMoves, dailyKey, dailyVault, deadliness, themeFor, HOUSE, H, nightOf, partsFor, RHYTHMS, START, SWEEPS, W } from '../shared/vault.ts';
 import { GIF } from './gif.js';
 import { MusicPlayer } from './music.js';
 const $ = id => document.getElementById(id);
@@ -378,9 +378,15 @@ function finish(n) {
     sfx.win(); music.sting('cracked'); G.over = 'won';
     saveGhost(G.key, G.log);
     const job = /^h(\d)$/.exec(G.key), jn = job ? +job[1] : 0, last = jn === LEVELS.length;
-    overlay('won', 'CRACKED', `${G.moves} moves${G.moves <= G.best ? ', a perfect run.' : `. The best possible is ${G.best}.`} ${tries === 1 ? 'First try.' : `Cracked on try ${tries}.`}`, G.next && jn ? `Tap anywhere for job ${jn + 1}: ${LEVELS[jn].name}` : last ? 'Tap anywhere to see tonight’s vaults' : 'Tap anywhere to go back');
+    const daily = G.key === DAILY()?.key, toDaily = jn === 1 && G.next && DAILY() && !progress[DAILY().key]?.won;
+    overlay('won', 'CRACKED', `${G.moves} moves${G.moves <= G.best ? ', a perfect run.' : `. The best possible is ${G.best}.`} ${tries === 1 ? 'First try.' : `Cracked on try ${tries}.`}`,
+      toDaily ? 'Tap anywhere for today’s Daily Vault' : G.next && jn ? `Tap anywhere for job ${jn + 1}: ${LEVELS[jn].name}` : last || daily ? 'Tap anywhere to see tonight’s vaults' : 'Tap anywhere to go back');
+    if (toDaily) addCardLine('Next: today’s Daily Vault, the same for everyone.', 'storyline');
     if (last) addCardLine('That’s the training done. The real jobs are the vaults other players built tonight, and yours could be next.', 'storyline');
-    if (jn && !last) addCardButton('Tonight’s vaults', () => show('home'));
+    if (daily && !myBuilt()) addCardLine('Now build one that catches everyone else.', 'storyline');
+    if (toDaily) addCardButton(`Job 2: ${LEVELS[1].name}`, () => playHouse(1));
+    else if (jn && !last) addCardButton('Tonight’s vaults', () => show('home'));
+    if (daily && !myBuilt()) addCardButton('Build your vault', () => show('build'));
   }
   // what we show is local; what counts is the server's replay of the same moves
   progress[G.key] = { tries, won: prev.won || n.status === 'won', moves: n.status === 'won' ? (prev.won ? Math.min(prev.moves, G.moves) : G.moves) : prev.moves };
@@ -411,7 +417,10 @@ function overlay(cls, h, p, sub) {
 // a result card that doesn't fit its board gets tighter, step by step
 function fitOverlay() {
   const o = $('overlay'); o.classList.remove('tight', 'tighter', 'overflowing');
-  for (const c of ['tight', 'tighter', 'overflowing']) { if (o.scrollHeight <= o.clientHeight + 1) return; o.classList.add(c); }
+  // (a centred card spills off both ends, so measure where its first and last items really sit)
+  // (layout positions, not on-screen ones: the card's entrance animation scales it while it appears)
+  const fits = () => { const k = [...o.children].filter(e => e.offsetParent === o); return !k.length || (Math.min(...k.map(e => e.offsetTop)) >= -1 && Math.max(...k.map(e => e.offsetTop + e.offsetHeight)) <= o.clientHeight + 1); };
+  for (const c of ['tight', 'tighter', 'overflowing']) { if (fits()) return; o.classList.add(c); }
 }
 $('overlay').onclick = () => {
   if (G.key === 'test') { show(G.label === 'Test run' ? 'build' : 'home'); return; }
@@ -637,10 +646,20 @@ function saveGhost(key, log) {
     if (!Array.isArray(old) || log.length < old.length) localStorage.setItem('vault:ghost:' + key, JSON.stringify(log));
   } catch {}
 }
+// Tonight's Daily Vault: the server sends it; the web preview generates the same vault here.
+let localDaily = null;
+function DAILY(force = false) {
+  if (INIT?.daily) return INIT.daily;
+  if (!PREVIEW || (!localDaily && !force)) return null; // (the preview builds it in idle time, see load)
+  if (!localDaily) { const level = dailyVault(dayNo); localDaily = { key: dailyKey(dayNo), night: dayNo, name: level.name, level, best: bestMoves(level), stats: { tries: 0, caught: 0, cracked: 0, people: 0, marks: {} }, leaders: [], me: null }; }
+  return localDaily;
+}
+function playDaily() { const d = DAILY(true); if (d) play(d.level, d.key, 'For everyone', null, null); }
 function statsFor(key) {
   const empty = { tries: 0, caught: 0, cracked: 0, people: 0, marks: {} };
   if (!INIT) return empty;
   if (INIT.house[key]) return INIT.house[key];
+  if (INIT.daily?.key === key) return INIT.daily.stats;
   const v = [INIT.mine, ...INIT.others].find(x => x && x.key === key);
   return v ? v.stats : empty;
 }
@@ -660,7 +679,10 @@ function renderPlay() {
 }
 
 // ---------- home ----------
-function playHouse(i) { play(LEVELS[i], 'h' + (i + 1), `Vault ${i + 1} of ${LEVELS.length}`, i < LEVELS.length - 1 ? () => playHouse(i + 1) : null); }
+function playHouse(i) {
+  const d = DAILY(), toDaily = i === 0 && d && !progress[d.key]?.won;
+  play(LEVELS[i], 'h' + (i + 1), `Vault ${i + 1} of ${LEVELS.length}`, toDaily ? () => playDaily() : i < LEVELS.length - 1 ? () => playHouse(i + 1) : null);
+}
 function renderHome() {
   const done = LEVELS.filter((_, i) => progress['h' + (i + 1)]?.won).length;
   const st = INIT?.streak;
@@ -685,7 +707,7 @@ function renderHome() {
     $('mine').innerHTML = `<div class="sub">${th ? `<b class="theme">Tonight is ${th.name}.</b> ${th.line} ` : ''}Tonight’s parts: <b>${partsLine()}</b>. Build a vault that catches people. You get one a night.</div>${INIT && !INIT.userId ? '<div class="sub"><b>Log in to Reddit</b> to publish your vault and keep your runs. You can still play and test everything.</div>' : ''}<div class="row"><button class="primary" id="go-build" type="button">Build tonight’s vault</button></div>`;
     $('go-build').onclick = () => show('build');
   }
-  renderVaultOfTheNight();
+  renderDaily(); renderVaultOfTheNight();
   const list = (INIT?.others || []).slice().sort((a, b) => deadliness(b.stats) - deadliness(a.stats));
   $('others-line').innerHTML = crowdStatus !== 'live' ? crowdLine() : list.length ? 'Deadliest first. Each one was built by another player from tonight’s parts.' : 'Nobody else has built a vault tonight yet. Be the first, or check back later.';
   $('others').innerHTML = '';
@@ -709,6 +731,24 @@ function vaultOfTheNight() {
   const all = [INIT?.mine, ...(INIT?.others || [])].filter(v => v && v.stats.people - v.stats.cracked > 0);
   all.sort((a, b) => deadliness(b.stats) - deadliness(a.stats) || b.stats.caught - a.stats.caught);
   return all[0] || null;
+}
+function renderDaily() {
+  const d = DAILY(), sec = $('daily-section');
+  if (!d) { sec.hidden = true; return; }
+  sec.hidden = false;
+  $('daily-h').textContent = `Daily Vault #${d.night + 1}`;
+  const r = progress[d.key], st = d.stats;
+  const status = r?.won ? `You cracked it in <b>${r.moves}</b> moves${d.me ? `, <b>#${d.me.place}</b> of ${d.me.of}` : ''}.` : r?.tries ? `Busted ×${r.tries}. The gem’s still there.` : 'One vault, the same for everyone tonight.';
+  const crowd = st.people ? `Stumped <b>${st.people - st.cracked}</b> of <b>${st.people}</b> so far · perfect run <b>${d.best}</b> moves` : `Nobody has tried it yet · perfect run <b>${d.best}</b> moves`;
+  const rows = d.leaders.map((l, i) => `<li class="${d.me?.place === i + 1 ? 'me' : ''}"><span>${i + 1}. u/${escapeHtml(l.name)}</span><b>${l.moves}</b></li>`).join('');
+  const board = PREVIEW ? '<div class="sub">The leaderboard lives in the VAULT post on Reddit.</div>' : rows ? `<ol class="board-list" aria-label="Fastest cracks">${rows}</ol>` : '<div class="sub">The fastest cracks go here. Be the first.</div>';
+  $('daily').innerHTML = `<div class="thumbrow"><span class="tslot"></span><div><div class="n"></div><div class="sub">${crowd}</div></div></div>${board}<div class="row"></div>`;
+  $('daily').querySelector('.tslot').replaceWith(thumb(d.level, 56));
+  $('daily').querySelector('.n').innerHTML = status;
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = r?.won ? 'ghost' : 'primary';
+  btn.textContent = r?.won ? 'Play it again' : r?.tries ? 'Try again' : 'Crack today’s vault';
+  btn.onclick = () => { sfx.wake(); playDaily(); };
+  $('daily').querySelector('.row').appendChild(btn);
 }
 function renderVaultOfTheNight() {
   const v = vaultOfTheNight(), sec = $('votn-section');
@@ -1117,7 +1157,13 @@ async function api(ep, body) {
   return json;
 }
 async function load() {
-  if (PREVIEW) { crowdStatus = 'preview'; refresh(); if (view === 'home' && !Object.keys(tipsSeen).length) playHouse(0); return; }
+  if (PREVIEW) {
+    crowdStatus = 'preview'; refresh(); if (view === 'home' && !Object.keys(tipsSeen).length) playHouse(0);
+    // the Daily Vault is generated here in the preview: in idle time, after the first screen is up
+    const idle = window.requestIdleCallback || (f => setTimeout(f, 300));
+    idle(() => { DAILY(true); if (view === 'home') renderHome(); if (view === 'play' && G.key === 'h1' && !G.over) G.next = () => playDaily(); });
+    return;
+  }
   try {
     INIT = await api(Endpoint.Init); progress = INIT.progress || {}; crowdStatus = 'live';
     dayNo = INIT.night; PARTS = INIT.parts; clockOffset = typeof INIT.now === 'number' ? INIT.now - Date.now() : (INIT.night - nightOf(Date.now())) * 86400000; // (an older server sends no clock: assume whole days off) $('night').textContent = 'Night ' + (dayNo + 1);
@@ -1126,10 +1172,12 @@ async function load() {
   // (without the server or a login, this device's memory decides: no tips seen means a first visit)
   const firstVisit = INIT?.userId ? !Object.keys(progress).length : !Object.keys(tipsSeen).length;
   if (view === 'home' && firstVisit) { playHouse(0); return; }
+  const d = DAILY(); if (view === 'home' && d && !progress[d.key]?.won) { playDaily(); return; }
   refresh();
 }
 async function submitAttempt(key, moves) {
   if (PREVIEW) return;
+  const refreshBoard = key === INIT?.daily?.key;
   try {
     const rsp = await api(Endpoint.Attempt, { key, moves });
     progress[key] = rsp.progress;
@@ -1152,8 +1200,11 @@ async function submitAttempt(key, moves) {
     if (INIT) {
       if (INIT.house[key]) INIT.house[key] = rsp.stats;
       for (const v of [INIT.mine, ...INIT.others]) if (v && v.key === key) v.stats = rsp.stats;
+      if (INIT.daily?.key === key) INIT.daily.stats = rsp.stats;
     }
     if (view === 'play' && G.key === key) renderPlay();
+    // a Daily crack moves the leaderboard: fetch it again quietly
+    if (refreshBoard && rsp.result === 'won') api(Endpoint.Init).then(i => { if (i?.daily) { INIT.daily = i.daily; if (view === 'home') renderHome(); } }).catch(() => {});
   } catch (e) { toast(e.message); }
 }
 function refresh() { if (view === 'home') renderHome(); else if (view === 'play') renderPlay(); else if (view === 'build') check(); }
