@@ -122,7 +122,7 @@ before(async () => {
     currentUser = user === 't2_mod' ? 'the_mod' : 'tester'
     await runWithContext(
       {
-        appName: 'vault-heist',
+        appName: 'vault-heist-game',
         subredditName: 'vaulttest',
         postId: 't3_1',
         userId: user,

@@ -80,7 +80,8 @@ devvit, devvit-web, typescript, javascript, node.js, redis, canvas, web-audio, e
 ---
 
 ## Links to fill in on the form
-- App listing: `https://developers.reddit.com/apps/vault-heist` (or the final app name)
+- App listing: `https://developers.reddit.com/apps/vault-heist-game`
+- Playtest subreddit: https://www.reddit.com/r/vault_heist_game_dev
 - Demo post: link to tonight’s VAULT post in the demo subreddit
 - Repository: link to the public repo. **The game lives on the `dev/eager-albattani-c9atvp` branch; `main` is still empty.** Merge it into `main` before submitting (or link the branch directly), so judges who open the repo see the code.
 - Video: link to the demo video

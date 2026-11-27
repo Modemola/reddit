@@ -43,7 +43,7 @@ npm run upload
 npm run playtest
 ```
 
-If `npm run upload` says the app name `vault-heist` is taken, pick another short lowercase name (letters, numbers, hyphens) and change `"name"` in both `devvit.json` and `package.json`, then run it again.
+The app is registered as `vault-heist-game` (https://developers.reddit.com/apps/vault-heist-game), with the playtest subreddit r/vault_heist_game_dev. To ship an update, from `reddit/vault-app` run `git pull` then `npm run upload`. If `git pull` complains that `devvit.json` has local changes, run `git checkout -- devvit.json` and pull again.
 
 ### Check that it worked (5 minutes, on your phone and on a computer)
 Installing the app posts tonight’s VAULT in the test subreddit by itself. If no post shows up, open the subreddit’s menu (the `…` or mod tools) and choose **VAULT: post tonight’s vaults**.

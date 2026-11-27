@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "vault-heist",
+  "name": "vault-heist-game",
   "post": {
     "entrypoints": {
       "default": {
