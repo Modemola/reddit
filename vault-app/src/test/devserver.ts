@@ -96,7 +96,7 @@ createServer(async (req, rsp) => {
     currentName = user === 't2_mod' ? 'local_mod' : 'local_tester'
     await runWithContext(
       {
-        appName: 'vault-heist',
+        appName: 'vault-heist-game',
         subredditName: 'vaultlocal',
         postId: 't3_local',
         userId: user,
