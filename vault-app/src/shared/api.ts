@@ -53,6 +53,8 @@ export type LastNight = {
     author: string
     stumped: number
     people: number
+    /** true when it's this player's own vault */
+    yours?: boolean
   } | null
   daily: {
     name: string

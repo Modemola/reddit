@@ -321,6 +321,23 @@ test('the Daily Vault: in init, ranked by name on a leaderboard, never served ea
   )
   assert.equal(shared.status, 200)
   const line = String(comments.at(-1)?.richtext)
+  // t2_d1 cracked first try, then plays it again twice: still no red squares when they share
+  await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: daily.key, moves: sol},
+    't2_d1',
+  )
+  await post<AttemptRsp>(
+    Endpoint.Attempt,
+    {key: daily.key, moves: sol},
+    't2_d1',
+  )
+  await post<ShareRsp>(Endpoint.Share, {key: daily.key, moves: sol}, 't2_d1')
+  const replayed = String(comments.at(-1)?.richtext)
+  assert.ok(
+    replayed.includes(`(perfect ${sol.length}) 🟩`) && !replayed.includes('🟥'),
+    replayed,
+  )
   assert.ok(
     line.includes(
       `VAULT Daily #${night + 1}: cracked in ${sol.length} (perfect ${sol.length}) 🟩`,
@@ -374,7 +391,14 @@ test('the morning-after recap: a comment on the new post, and each player’s ow
     cracked: 1,
     people: 4,
   })
+  // the deadliest vault is marked as the builder's own, for them only
+  assert.equal(old.deadliest?.yours, true)
+  // the feed card's lighter init carries neither the recap nor the leaderboard
+  const card = await get<InitRsp>(`${Endpoint.Init}?card=1`, 't2_old')
+  assert.equal(card.lastNight, undefined)
+  assert.deepEqual(card.daily?.leaders, [])
   const beta = (await get<InitRsp>(Endpoint.Init, 't2_b')).lastNight!
+  assert.equal(beta.deadliest?.yours, false)
   assert.deepEqual(beta.place, {place: 2, of: 2, moves: 15})
   assert.equal(beta.mine, null)
 })

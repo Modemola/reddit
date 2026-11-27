@@ -89,7 +89,8 @@ nightEl.textContent = `Night ${nightOf(Date.now()) + 1}`
 
 async function loadStats(): Promise<void> {
   try {
-    const rsp = await fetch(Endpoint.Init, {
+    // the card needs no recap or leaderboard: ask for the lighter init
+    const rsp = await fetch(`${Endpoint.Init}?card=1`, {
       headers: {Accept: 'application/json'},
     })
     if (!rsp.ok) return
